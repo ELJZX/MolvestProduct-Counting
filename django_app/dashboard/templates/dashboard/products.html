@@ -1,0 +1,135 @@
+{% extends 'dashboard/base.html' %}
+{% block title %}Продукция — Учёт продукции{% endblock %}
+{% block content %}
+{% load static %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h1 class="h3 mb-0"><i class="bi bi-box-seam me-2"></i>Продукция</h1>
+    <div class="text-muted small">Всего в справочнике: {{ page.paginator.count }}</div>
+  </div>
+  <div class="d-flex gap-2">
+    <form method="get" class="d-flex gap-2 align-items-center">
+      <select name="per_page" class="form-select form-select-sm" onchange="this.form.submit()" title="Количество на странице">
+        <option value="20"{% if per_page == 20 %} selected{% endif %}>20</option>
+        <option value="40"{% if per_page == 40 %} selected{% endif %}>40</option>
+        <option value="60"{% if per_page == 60 %} selected{% endif %}>60</option>
+        <option value="100"{% if per_page == 100 %} selected{% endif %}>100</option>
+      </select>
+      <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Поиск: код/название/1С" style="width:220px">
+      <button class="btn btn-sm btn-outline-primary" type="submit"><i class="bi bi-search"></i></button>
+    </form>
+    {% if is_admin %}
+    <a href="{% url 'product_add' %}" class="btn btn-sm btn-primary">
+      <i class="bi bi-plus-lg me-1"></i>Добавить продукт
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+{# Пагинация сверху #}
+{% if page.paginator.num_pages > 1 %}
+<nav class="mb-2">
+  <ul class="pagination pagination-sm mb-0">
+    {% if page.has_previous %}
+      <li class="page-item"><a class="page-link" href="?page={{ page.previous_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q }}{% endif %}">←</a></li>
+    {% endif %}
+    <li class="page-item disabled"><span class="page-link">Стр. {{ page.number }} / {{ page.paginator.num_pages }} · Показано {{ page.object_list|length }} из {{ page.paginator.count }}</span></li>
+    {% if page.has_next %}
+      <li class="page-item"><a class="page-link" href="?page={{ page.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q }}{% endif %}">→</a></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}
+
+<div class="table-responsive">
+  <table class="table table-hover align-middle bg-white shadow-sm rounded-3">
+    <thead>
+      <tr>
+        <th>Код</th>
+        <th>Название</th>
+        <th>Цех</th>
+        <th>Код 1С</th>
+        <th>Цвет на диаграмме</th>
+        <th>Изображение</th>
+        <th class="text-end">Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for product in page %}
+        <tr id="product-row-{{ product.pk }}">
+          <td><span class="badge text-bg-dark product-code-badge">{{ product.code }}</span></td>
+          <td>
+            <span class="product-name-cell">{{ product.name }}</span>
+            {% if product.description %}<div class="small text-muted">{{ product.description|truncatechars:80 }}</div>{% endif %}
+          </td>
+          <td>{% if product.shop %}{{ product.shop.name }}{% else %}<span class="text-muted">общий</span>{% endif %}</td>
+          <td><code>{{ product.code_1c|default:'—' }}</code></td>
+          <td>
+            <span class="color-swatch" style="background:{{ product.color }}"></span>
+            <code class="color-value">{{ product.color }}</code>
+          </td>
+          <td>
+            {% if product.image %}
+              <img src="{{ product.image.url }}" alt="" class="product-thumb" onerror="this.style.display='none'">
+            {% else %}<span class="text-muted small">—</span>{% endif %}
+          </td>
+          <td class="text-end">
+            {% if is_admin %}
+            <button type="button" class="btn btn-sm btn-outline-primary btn-edit-product" data-pk="{{ product.pk }}" title="Редактировать">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <form method="post" action="{% url 'product_delete' product.pk %}" class="d-inline" onsubmit="return confirm('Удалить продукт {{ product.code }}?');">
+              {% csrf_token %}
+              <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+            </form>
+            {% else %}
+            <span class="text-muted small">просмотр</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7" class="text-center text-muted py-4">Продукты не найдены</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# Пагинация снизу #}
+{% if page.paginator.num_pages > 1 %}
+<nav>
+  <ul class="pagination pagination-sm">
+    {% if page.has_previous %}
+      <li class="page-item"><a class="page-link" href="?page={{ page.previous_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q }}{% endif %}">←</a></li>
+    {% endif %}
+    <li class="page-item disabled"><span class="page-link">Стр. {{ page.number }} / {{ page.paginator.num_pages }}</span></li>
+    {% if page.has_next %}
+      <li class="page-item"><a class="page-link" href="?page={{ page.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q }}{% endif %}">→</a></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}
+
+{# Модальное окно редактирования #}
+<div class="modal fade" id="productModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-pencil me-1"></i>Редактирование продукта</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body" id="productModalBody">
+        <div class="text-center text-muted py-4">Загрузка…</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="button" class="btn btn-primary" id="btnModalSave"><i class="bi bi-check-lg me-1"></i>Сохранить</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'dashboard/js/products.js' %}?v=6"></script>
+{% endblock %}

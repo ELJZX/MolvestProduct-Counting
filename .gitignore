@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Виртуальные окружения
+.venv/
+venv/
+
+# Базы данных
+*.sqlite3
+
+# Статика
+staticfiles/
+
+# Логи и временные файлы
+*.log
+.DS_Store

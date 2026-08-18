@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Эмулятор линии — тестирование</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="logo">M</div>
+    <div>
+      <h1>Эмулятор линии</h1>
+      <div class="sub">Тестовый сервис вместо контроллера ОВЕН · данные идут через API /api/v1/counter/</div>
+    </div>
+  </div>
+  <div class="top-right">
+    <button id="btnRefresh" class="btn" title="Обновить данные">⟳</button>
+  </div>
+</header>
+
+<!-- Панель подключения к основному серверу -->
+<section class="card conn-panel" id="connPanel">
+  <div class="conn-left">
+    <div class="conn-title">Подключение к серверу проекта (Django)</div>
+    <div class="conn-url">URL: <code id="djangoUrl">—</code></div>
+  </div>
+  <div class="conn-right">
+    <span id="connStatus" class="conn conn-unknown">проверка…</span>
+    <button id="btnCheck" class="btn btn-primary">Проверить подключение</button>
+  </div>
+  <div id="connDetail" class="conn-detail"></div>
+</section>
+
+<div class="layout">
+  <!-- Выбор линий -->
+  <section class="card">
+    <div class="card-title-row">
+      <h2>Линии</h2>
+      <div class="small-actions">
+        <button id="btnSelectAll" class="btn-link">выбрать все</button>
+        <button id="btnSelectNone" class="btn-link">снять все</button>
+      </div>
+    </div>
+    <div id="linesList" class="lines-list">
+      <div class="hint">Загрузка линий…</div>
+    </div>
+    <div id="linesSummary" class="hint"></div>
+  </section>
+
+  <!-- Выбор продукта и приращения -->
+  <section class="card">
+    <div class="card-title-row"><h2>Продукт</h2></div>
+    <label class="lbl" for="productFilter">Поиск: название, код 001–999 или код 1С</label>
+    <input id="productFilter" type="text" placeholder="Начните вводить…" autocomplete="off">
+    <select id="productSelect" size="8"></select>
+    <div id="productInfo" class="hint"></div>
+
+    <div class="card-title-row mt"><h2>Приращение за клик</h2></div>
+    <div class="step-row">
+      <input id="stepInput" type="number" min="1" max="100000" value="1">
+      <button class="btn btn-quick" data-step="1">+1</button>
+      <button class="btn btn-quick" data-step="5">+5</button>
+      <button class="btn btn-quick" data-step="10">+10</button>
+      <button class="btn btn-quick" data-step="100">+100</button>
+    </div>
+    <div class="hint">Клик по карточке выбранной линии насчитывает продукцию. Если продукт отличается от текущего на линии — ключ продукта сменится автоматически (как у реального контроллера).</div>
+  </section>
+</div>
+
+<!-- Карточки выбранных линий -->
+<section class="lines">
+  <div id="linesWrap" class="empty">Выберите хотя бы одну линию слева.</div>
+</section>
+
+<footer class="foot">Эмулятор линии · для тестирования MolvestCountingSystem</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

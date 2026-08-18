@@ -1,0 +1,66 @@
+{% extends 'dashboard/base.html' %}
+{% block title %}{{ shop.name }} — Молвест.Учет.Продукции{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'shops' %}">Цеха</a></li>
+    <li class="breadcrumb-item active">{{ shop.name }}</li>
+  </ol>
+</nav>
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ shop.name }}</h1>
+    <div class="text-muted small">{{ shop.description|default:'' }}</div>
+  </div>
+  <div class="text-end small">
+    <div>Линий: <strong>{{ lines|length }}</strong></div>
+    <div>В работе: <strong class="text-success">{{ shop.lines_in_work }}</strong></div>
+  </div>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-hover align-middle bg-white shadow-sm rounded-3">
+    <thead>
+      <tr>
+        <th>№</th>
+        <th>Линия</th>
+        <th>Текущий продукт</th>
+        <th>Задание с</th>
+        <th class="text-end">За сегодня</th>
+        <th class="text-end">Всего по заданию</th>
+        <th>Статус</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in lines %}
+        <tr>
+          <td class="fw-semibold">{{ line.number }}</td>
+          <td>{{ line.name }}</td>
+          <td>
+            {% if line.current_product %}
+              <span class="product-chip" style="background:{{ line.current_product.color }}">{{ line.current_product.code }}</span>
+              <span class="small">{{ line.current_product.name }}</span>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td class="small">
+            {% if line.current_assignment %}{{ line.current_assignment.started_at|date:'d.m.Y H:i' }}{% else %}—{% endif %}
+          </td>
+          <td class="text-end fw-semibold">{{ line.today_total }}</td>
+          <td class="text-end">{{ line.current_assignment.total_count|default:'0' }}</td>
+          <td>
+            <span class="badge text-bg-{{ line.status.1 }}">{{ line.status.0 }}</span>
+          </td>
+          <td class="text-end">
+            <a href="{% url 'line_detail' line.pk %}" class="btn btn-sm btn-outline-primary">
+              Диаграмма <i class="bi bi-bar-chart ms-1"></i>
+            </a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" class="text-center text-muted py-4">В цехе нет линий</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

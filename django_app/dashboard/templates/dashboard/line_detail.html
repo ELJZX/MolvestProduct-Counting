@@ -1,0 +1,222 @@
+{% extends 'dashboard/base.html' %}
+{% block title %}{{ line.name }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'shops' %}">Цеха</a></li>
+    <li class="breadcrumb-item"><a href="{% url 'shop_detail' line.shop.pk %}">{{ line.shop.name }}</a></li>
+    <li class="breadcrumb-item"><a href="{% url 'lines' %}">Линии</a></li>
+    <li class="breadcrumb-item active">{{ line.name }}</li>
+  </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+  <div>
+    <h1 class="h3 mb-1">
+      {{ line.name }}
+      <span class="badge text-bg-{{ line.status.1 }}">{{ line.status.0 }}</span>
+    </h1>
+    <div class="text-muted small">
+      Цех: {{ line.shop.name }} ·
+      Последние данные: {% if line.last_seen %}{{ line.last_seen|date:'d.m.Y H:i:s' }}{% else %}—{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-cpu me-1"></i>Текущий код продукта
+      </div>
+      <div class="card-body">
+        {% if assignment %}
+          <div class="d-flex align-items-center gap-4 flex-wrap py-2">
+            <span class="product-key-badge">{{ assignment.product.code }}</span>
+            <div>
+              <div class="fw-bold fs-3 mb-1">{{ assignment.product.name }}</div>
+              <div class="text-muted small">
+                Смена с {{ assignment.started_at|date:'d.m.Y H:i' }}
+                {% if not assignment.is_active %} · завершена {{ assignment.ended_at|date:'d.m.Y H:i' }}{% endif %}
+                {% if assignment.product.code_1c %} · Код 1С: <code>{{ assignment.product.code_1c }}</code>{% endif %}
+              </div>
+            </div>
+            <div class="ms-auto text-end">
+              <div class="fs-3 fw-bold text-primary">{{ assignment.total_count }} <span class="fs-6 text-muted">шт.</span></div>
+              <div class="text-muted small">изготовлено по заданию</div>
+            </div>
+          </div>
+        {% else %}
+          <div class="text-muted">Задание ещё не начато.</div>
+        {% endif %}
+
+        {% if can_manage %}
+          <hr>
+          <form method="post" action="{% url 'line_switch' line.pk %}" id="switchForm" class="d-flex gap-2 align-items-center flex-wrap">
+            {% csrf_token %}
+            <label class="form-label mb-0 text-nowrap">Сменить продукт:</label>
+            <div class="product-combo" id="productCombo" style="min-width: 300px; max-width: 420px;">
+              <input type="hidden" name="product_code" id="productComboValue" value="">
+              <input type="text" id="productComboField" class="form-control form-control-sm product-combo-field"
+                     value="" placeholder="— выберите продукт —" readonly autocomplete="off">
+              <div class="product-combo-panel" id="productComboPanel">
+                <input type="text" id="productComboSearch" class="form-control form-control-sm product-combo-search"
+                       placeholder="Поиск: название, код или код 1С…" autocomplete="off">
+                <div class="product-combo-list" id="productComboList">
+                  {% for product in products %}
+                    <button type="button" class="product-combo-item" data-code="{{ product.code }}"
+                            data-code1c="{{ product.code_1c|default:'' }}">
+                      <span class="combo-code">{{ product.code }}</span>
+                      <span class="combo-name">{{ product.name }}</span>
+                      {% if product.code_1c %}<span class="combo-1c">1С: {{ product.code_1c }}</span>{% endif %}
+                    </button>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-sm btn-warning align-self-start" id="btnSwitchSubmit">
+              <i class="bi bi-arrow-repeat me-1"></i>Изменить код продукта
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+      <h2 class="h5 mb-0"><i class="bi bi-bar-chart me-1"></i>Производительность по минутам</h2>
+      <div class="d-flex align-items-center gap-3">
+        <div class="prod-legend" id="prodLegend">
+          <span class="prod-legend-swatch" id="prodLegendSwatch" title="">—</span>
+          <span class="prod-legend-text">Продукция, шт/мин</span>
+        </div>
+        <div id="rangeTotal" class="fw-bold fs-5 text-primary">—</div>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="lineChart"></canvas>
+    </div>
+    <div id="lineChartZoom"></div>
+    <div id="chartStatus" class="text-muted small mt-2"></div>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header bg-white fw-semibold"><i class="bi bi-table me-1"></i>Итоги за период (обновляются в реальном времени)</div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead>
+        <tr><th>Код</th><th>Продукт</th><th class="text-end">Кол-во, шт.</th></tr>
+      </thead>
+      <tbody id="summaryBody">
+        <tr><td colspan="3" class="text-center text-muted py-3">Загрузка…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ line.pk|json_script:'lineId' }}
+{% if assignment %}
+{{ assignment.started_at|date:'c'|json_script:'assignmentStart' }}
+{{ assignment.product.code|json_script:'assignmentProductCode' }}
+{% else %}
+<script type="application/json" id="assignmentStart">null</script>
+<script type="application/json" id="assignmentProductCode">null</script>
+{% endif %}
+{% load static %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="{% static 'dashboard/js/chart_zoom.js' %}?v=6"></script>
+<script src="{% static 'dashboard/js/chart3d.js' %}?v=6"></script>
+<script src="{% static 'dashboard/js/line_chart.js' %}?v=6"></script>
+<script>
+// Выпадающий список смены продукта: открывается по клику на поле,
+// закрывается при выборе или при клике в любом месте страницы.
+(function () {
+  const combo = document.getElementById('productCombo');
+  const field = document.getElementById('productComboField');
+  const panel = document.getElementById('productComboPanel');
+  const search = document.getElementById('productComboSearch');
+  const list = document.getElementById('productComboList');
+  const hidden = document.getElementById('productComboValue');
+  const form = document.getElementById('switchForm');
+  const submitBtn = document.getElementById('btnSwitchSubmit');
+  if (!combo || !field || !panel || !list || !hidden) return;
+  const allItems = Array.prototype.slice.call(list.querySelectorAll('.product-combo-item'));
+
+  function applyFilter() {
+    const q = search.value.trim().toLowerCase();
+    let visible = 0;
+    allItems.forEach(function (it) {
+      const hay = (it.textContent + ' ' + (it.dataset.code1c || '')).toLowerCase();
+      const show = !q || hay.indexOf(q) !== -1;
+      it.hidden = !show;
+      if (show) visible++;
+    });
+    if (!visible) {
+      let empty = list.querySelector('.combo-empty');
+      if (!empty) {
+        empty = document.createElement('div');
+        empty.className = 'combo-empty';
+        list.appendChild(empty);
+      }
+      empty.hidden = false;
+      empty.textContent = 'Ничего не найдено';
+    } else {
+      const empty = list.querySelector('.combo-empty');
+      if (empty) empty.hidden = true;
+    }
+  }
+
+  function openPanel() {
+    combo.classList.add('open');
+    search.value = '';
+    applyFilter();
+    search.focus();
+  }
+
+  function closePanel() {
+    combo.classList.remove('open');
+    // если ничего не выбрано — поле снова превращается в заглушку
+    if (!hidden.value) field.value = '';
+  }
+
+  function selectItem(it) {
+    hidden.value = it.dataset.code;
+    field.value = it.querySelector('.combo-name') ? (it.dataset.code + ' — ' + it.querySelector('.combo-name').textContent) : it.dataset.code;
+    combo.classList.remove('open');
+    field.classList.remove('is-invalid');
+  }
+
+  field.addEventListener('click', function () {
+    if (combo.classList.contains('open')) { closePanel(); } else { openPanel(); }
+  });
+  search.addEventListener('input', applyFilter);
+  search.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); closePanel(); }
+  });
+  list.addEventListener('click', function (e) {
+    const it = e.target.closest('.product-combo-item');
+    if (it) selectItem(it);
+  });
+  // клик вне комбобокса закрывает список
+  document.addEventListener('mousedown', function (e) {
+    if (!combo.contains(e.target)) closePanel();
+  });
+
+  if (form) {
+    form.addEventListener('submit', function (ev) {
+      if (!hidden.value) {
+        ev.preventDefault();
+        field.classList.add('is-invalid');
+        openPanel();
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

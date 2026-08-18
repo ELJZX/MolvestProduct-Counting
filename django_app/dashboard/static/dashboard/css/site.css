@@ -1,0 +1,545 @@
+:root {
+  --app-bg: #f4f6fb;
+}
+body {
+  background: var(--app-bg);
+  font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+}
+.app-navbar {
+  background: linear-gradient(90deg, #0d2b52 0%, #14507a 100%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .15);
+}
+.app-navbar .navbar-brand {
+  font-size: 1.35rem;
+  padding-right: 1rem;
+  white-space: nowrap;
+}
+/* Логотип в шапке (загружается в настройках системы) */
+.app-logo {
+  height: 34px;
+  width: auto;
+  max-width: 140px;
+  object-fit: contain;
+  margin-right: .5rem;
+  vertical-align: middle;
+  background: rgba(255, 255, 255, .92);
+  padding: 3px 6px;
+  border-radius: .4rem;
+}
+.app-navbar .nav-link {
+  font-size: 1.02rem;
+  padding: .55rem .9rem;
+}
+.app-navbar .navbar-nav {
+  gap: .15rem;
+}
+/* Шапка: слева название и горизонтальные вкладки (переносятся на новую строку
+   при нехватке ширины / изменении масштаба), справа — дата/время, пользователь,
+   кнопки «Админка» и «Выйти». Все зоны переносятся (flex-wrap), поэтому при
+   зуме или узком экране элементы красиво смещаются вниз. */
+.app-navbar-3col {
+  display: flex;
+  align-items: center;
+  gap: .5rem 1rem;
+  flex-wrap: wrap;
+  padding-top: .35rem;
+  padding-bottom: .35rem;
+}
+.app-nav-left {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: .25rem .75rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+/* Вкладки — всегда горизонтальные (flex-direction: row, иначе Bootstrap
+   делает .navbar-nav вертикальным). При нехватке ширины / изменении масштаба
+   вкладки переносятся на новые строки и группируются в единый блок. */
+.app-nav-tabs {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: .15rem .35rem;
+  align-items: center;
+  margin: 0;
+  padding: .2rem .4rem;
+  background: rgba(255, 255, 255, .09);
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: .65rem;
+}
+.app-nav-tabs .nav-link {
+  white-space: nowrap;
+  border-radius: .45rem;
+}
+.app-nav-tabs .nav-link.active {
+  background: rgba(255, 255, 255, .18);
+}
+.app-nav-right {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: .6rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+/* Блок даты/времени — компактная плашка рядом с пользователем */
+.app-datetime {
+  display: flex;
+  align-items: center;
+  gap: .25rem;
+  font-size: .95rem;
+  color: #fff;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, .14);
+  border: 1px solid rgba(255, 255, 255, .18);
+  padding: .32rem .75rem;
+  border-radius: .55rem;
+}
+/* Очень узкие экраны / крупный масштаб: прячем дату, оставляем время */
+@media (max-width: 575.98px) {
+  .app-datetime .app-date { display: none; }
+  .app-user { display: none; }
+}
+.app-main {
+  max-width: 1500px;
+}
+.stat-card {
+  border: none;
+  border-radius: .9rem;
+  box-shadow: 0 2px 10px rgba(13, 43, 82, .08);
+}
+.stat-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #0d2b52;
+  line-height: 1.1;
+}
+.stat-success .stat-value { color: #198754; }
+.stat-info .stat-value { color: #0d6efd; }
+.stat-warn .stat-value { color: #b8860b; }
+.stat-label {
+  color: #6c757d;
+  font-size: .85rem;
+  margin-top: .25rem;
+}
+.product-key-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 5.5rem;
+  padding: .85rem 1rem;
+  border-radius: .85rem;
+  background: #0d2b52;
+  color: #fff;
+  font-size: 2.1rem;
+  font-weight: 800;
+  letter-spacing: .05em;
+}
+.chart-wrap {
+  position: relative;
+  height: 380px;
+}
+table.table {
+  border-radius: .6rem;
+  overflow: hidden;
+}
+.breadcrumb { margin-bottom: .75rem; }
+@media (max-width: 768px) {
+  .chart-wrap { height: 300px; }
+}
+/* Часы в шапке */
+.app-clock {
+  font-variant-numeric: tabular-nums;
+  opacity: .9;
+}
+/* Сравнение (отчёты) */
+.chart-wrap-lg {
+  height: 460px;
+}
+/* Цвета и изображения продукции */
+.color-swatch {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  vertical-align: middle;
+  border: 1px solid rgba(0,0,0,.15);
+  margin-right: 6px;
+}
+.product-code-badge {
+  font-size: 1rem;
+  min-width: 3.2rem;
+}
+.product-thumb {
+  height: 64px;
+  width: auto;
+  max-width: 96px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+  background: #fff;
+}
+/* RGB-сетка выбора цвета */
+.rgb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 26px);
+  gap: 4px;
+}
+.rgb-cell {
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.rgb-cell:hover {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 2px rgba(0,0,0,.2);
+}
+.rgb-cell.active {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px #0d2b52;
+}
+/* Строка выбора линии в отчётах */
+.line-row {
+  padding: .5rem;
+  border: 1px dashed #ced4da;
+  border-radius: .6rem;
+  margin-bottom: .5rem;
+}
+/* Всплывающая подсказка диаграммы (hover по столбику) */
+#chart-tooltip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 2000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .12s ease;
+  max-width: 300px;
+}
+#chart-tooltip .tt-body {
+  display: flex;
+  gap: .75rem;
+  align-items: center;
+  background: rgba(13, 43, 82, .97);
+  color: #fff;
+  padding: .7rem .9rem;
+  border-radius: .7rem;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .3);
+  max-width: 340px;
+}
+#chart-tooltip .tt-name {
+  font-size: .92rem;
+  line-height: 1.25;
+}
+#chart-tooltip .tt-1c {
+  font-size: .8rem;
+  opacity: .85;
+  font-variant-numeric: tabular-nums;
+}
+#chart-tooltip .tt-img {
+  width: 76px;
+  height: 76px;
+  object-fit: contain;
+  border-radius: .5rem;
+  background: #fff;
+  border: 1px solid rgba(255,255,255,.35);
+}
+#chart-tooltip .tt-noimg {
+  width: 76px;
+  height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: .4rem;
+  background: rgba(255,255,255,.12);
+  border: 1px dashed rgba(255,255,255,.35);
+}
+#chart-tooltip .tt-count {
+  font-size: 1.25rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+#chart-tooltip .tt-time {
+  font-size: .85rem;
+  opacity: .9;
+  margin-top: .1rem;
+}
+
+.stat-danger .stat-value { color: #dc3545; }
+/* Панель масштабирования диаграмм (кнопки + полоса прокрутки) */
+.zoom-panel {
+  margin-top: .75rem;
+  padding-top: .5rem;
+  border-top: 1px solid #e9ecef;
+}
+.zoom-top {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  flex-wrap: wrap;
+}
+.zoom-btns { display: flex; gap: .35rem; }
+.zoom-btn {
+  border: 1px solid #ced4da;
+  background: #fff;
+  border-radius: .4rem;
+  cursor: pointer;
+  padding: .28rem .6rem;
+  font-size: .9rem;
+  line-height: 1;
+  color: #0d2b52;
+}
+.zoom-btn:hover { background: #e9ecef; }
+.zoom-btn[data-zoom="reset"] { font-size: .82rem; }
+.zoom-label {
+  font-size: .8rem;
+  color: #6c757d;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* Полоса прокрутки по периоду */
+.zoom-scroll {
+  position: relative;
+  height: 12px;
+  margin-top: .5rem;
+  background: #eef2f8;
+  border: 1px solid #d7dee9;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+}
+.zoom-thumb {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  background: #0d6efd;
+  border-radius: 5px;
+  cursor: grab;
+  min-width: 14px;
+}
+.zoom-thumb:hover { background: #0b5ed7; }
+.zoom-thumb:active { cursor: grabbing; background: #0a58ca; }
+.zoom-note { font-size: .8rem; }
+
+/* Комбобокс выбора продукта (выпадающий список с поиском) */
+.product-combo { position: relative; }
+.product-combo-field { cursor: pointer; background: #fff; }
+.product-combo-field.is-invalid { border-color: #dc3545; }
+.product-combo-panel {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 1080;
+  background: #fff;
+  border: 1px solid #ced4da;
+  border-radius: .5rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .18);
+  padding: .45rem;
+}
+.product-combo.open .product-combo-panel { display: block; }
+.product-combo-search { width: 100%; }
+.product-combo-list {
+  margin-top: .4rem;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.product-combo-item {
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: .35rem .5rem;
+  border-radius: .35rem;
+  cursor: pointer;
+  font-size: .85rem;
+}
+.product-combo-item:hover { background: #eef4ff; }
+.product-combo-item .combo-code {
+  font-weight: 700;
+  color: #0d2b52;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.product-combo-item .combo-name { flex: 1; min-width: 0; }
+.product-combo-item .combo-1c {
+  color: #6c757d;
+  font-size: .75rem;
+  flex: none;
+}
+.combo-empty {
+  padding: .5rem;
+  text-align: center;
+  color: #6c757d;
+  font-size: .85rem;
+}
+
+/* ------------------------------------------------------------------
+   Адаптация под монитор 1920x1080
+------------------------------------------------------------------ */
+.app-main {
+  max-width: 100%;
+  padding-top: .75rem;
+  padding-bottom: .75rem;
+}
+@media (min-width: 1500px) {
+  .app-main { padding-left: 1.25rem; padding-right: 1.25rem; }
+  .app-navbar .nav-link { padding: .45rem .75rem; font-size: .95rem; }
+  .app-navbar .navbar-brand { font-size: 1.15rem; }
+  .chart-wrap { height: 340px; }
+}
+/* Цифры даты/времени — моноширинные */
+.app-datetime .app-date,
+.app-datetime .app-clock {
+  font-variant-numeric: tabular-nums;
+}
+/* Мелкие виджеты главной */
+.stat-card-sm .stat-value { font-size: 1.35rem; }
+.stat-card-sm .stat-label { font-size: .78rem; }
+/* Чип цвета продукта (код продукции с цветом) */
+.product-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.6rem;
+  padding: .18rem .5rem;
+  border-radius: .45rem;
+  color: #fff;
+  font-weight: 700;
+  font-size: .9rem;
+  letter-spacing: .03em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .45);
+  border: 1px solid rgba(0, 0, 0, .12);
+  margin-right: .35rem;
+}
+/* Вкладки отчётов */
+.nav-tabs-custom .nav-link {
+  padding: .35rem .85rem;
+  font-size: .92rem;
+}
+.report-types .form-check-inline { margin-right: 1rem; }
+.report-types .form-check-label { font-size: .9rem; }
+/* Таблицы отчётов на весь экран */
+.report-tables .report-table-block {
+  border-bottom: 1px solid #e9ecef;
+}
+.report-table-block:last-child { border-bottom: none; }
+.report-table-title {
+  font-weight: 600;
+  font-size: .95rem;
+  padding: .6rem 1rem;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+}
+.report-table th {
+  font-size: .85rem;
+  white-space: nowrap;
+  background: #eef2f8;
+}
+.report-table td {
+  font-size: .87rem;
+  font-variant-numeric: tabular-nums;
+}
+/* Вкладка «Отчёты»: две колонки, страница не прокручивается.
+   Слева — параметры (свой скролл), справа — результат (свой скролл).
+   При узком экране / крупном масштабе колонки складываются в одну. */
+.reports-page {
+  display: grid;
+  grid-template-columns: minmax(520px, 660px) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+  height: calc(100vh - 148px);
+  min-height: 460px;
+}
+.reports-left {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: .25rem;
+}
+.reports-right {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding-right: .25rem;
+}
+.reports-empty {
+  height: 100%;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8a94a6;
+  text-align: center;
+  border: 2px dashed #d7dee9;
+  border-radius: .9rem;
+  background: rgba(255, 255, 255, .6);
+  padding: 2rem;
+}
+@media (max-width: 1399.98px) {
+  .reports-page { grid-template-columns: 1fr; height: auto; min-height: 0; }
+  .reports-left { height: auto; overflow: visible; }
+  .reports-right { height: auto; overflow: visible; max-height: 72vh; }
+}
+/* Индикатор продукта на диаграмме линии (цвет + код, меняется по оси X) */
+.prod-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  cursor: default;
+}
+.prod-legend-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.4rem;
+  padding: .15rem .5rem;
+  border-radius: .4rem;
+  color: #fff;
+  font-weight: 700;
+  font-size: .85rem;
+  letter-spacing: .03em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .45);
+  border: 1px solid rgba(0, 0, 0, .12);
+  background: #adb5bd;
+  transition: background-color .2s ease;
+  cursor: help;
+}
+.prod-legend-text {
+  font-size: .88rem;
+  color: #495057;
+  white-space: nowrap;
+}
+/* Защита от выхода скролла графика за пределы */
+html, body { overflow-x: hidden; }
+.chart-wrap {
+  width: 100%;
+  overflow: hidden;
+}
+.chart-wrap canvas { max-width: 100%; }
+.zoom-scroll { overflow: hidden; }
+.zoom-thumb { max-width: calc(100% - 4px); }
+#lineChartZoom, #reportZoom { width: 100%; min-width: 0; }
+/* Выравнивание столбцов таблиц линий по цехам (одинаковые ширины во всех группах) */
+.table-lines {
+  table-layout: fixed;
+}
+.table-lines th:nth-child(1) { width: 24%; }
+.table-lines th:nth-child(2) { width: 24%; }
+.table-lines th:nth-child(3) { width: 13%; }
+.table-lines th:nth-child(4) { width: 10%; }
+.table-lines th:nth-child(5) { width: 10%; }
+.table-lines th:nth-child(6) { width: 10%; }
+.table-lines th:nth-child(7) { width: 9%; }

@@ -1,0 +1,9 @@
+{% extends 'dashboard/base.html' %}
+{% block title %}Доступ запрещён{% endblock %}
+{% block content %}
+<div class="text-center py-5">
+  <h1 class="display-4 text-danger"><i class="bi bi-shield-lock"></i> 403</h1>
+  <p class="fs-5">Недостаточно прав для выполнения этого действия.</p>
+  <a href="{% url 'home' %}" class="btn btn-primary">На главную</a>
+</div>
+{% endblock %}

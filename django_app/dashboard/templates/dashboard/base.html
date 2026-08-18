@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Молвест.Учет.Продукции{% endblock %} — {{ user.username|default:'Вход' }}</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+{% load static %}
+<link rel="stylesheet" href="{% static 'dashboard/css/site.css' %}?v=10">
+</head>
+<body>
+{% if user.is_authenticated %}
+<nav class="navbar navbar-dark app-navbar">
+  <div class="container-fluid app-navbar-3col">
+    <div class="app-nav-left">
+      <a class="navbar-brand fw-bold" href="{% url 'reports' %}" title="Отчёты">
+        {% if app_logo_url %}
+          <img class="app-logo" src="{{ app_logo_url }}" alt="Молвест">
+        {% else %}
+          <i class="bi bi-box-seam me-1"></i>
+        {% endif %}
+        Молвест.Учет.Продукции
+      </a>
+      <ul class="navbar-nav app-nav-tabs">
+        <li class="nav-item">
+          <a class="nav-link{% if request.resolver_match.url_name == 'home' %} active{% endif %}" href="{% url 'home' %}">
+            <i class="bi bi-clipboard-data me-1"></i>Статистика
+          </a>
+        </li>
+        {% if user.profile.role == 'admin' %}
+        <li class="nav-item">
+          <a class="nav-link{% if request.resolver_match.url_name == 'shops' or request.resolver_match.url_name == 'shop_detail' %} active{% endif %}" href="{% url 'shops' %}">
+            <i class="bi bi-building me-1"></i>Цеха
+          </a>
+        </li>
+        {% endif %}
+        <li class="nav-item">
+          <a class="nav-link{% if request.resolver_match.url_name == 'lines' or request.resolver_match.url_name == 'line_detail' %} active{% endif %}" href="{% url 'lines' %}">
+            <i class="bi bi-diagram-3 me-1"></i>Линии
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link{% if request.resolver_match.url_name == 'reports' %} active{% endif %}" href="{% url 'reports' %}">
+            <i class="bi bi-bar-chart-line me-1"></i>Отчёты
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link{% if request.resolver_match.url_name == 'products' %} active{% endif %}" href="{% url 'products' %}">
+            <i class="bi bi-box-seam me-1"></i>Продукция
+          </a>
+        </li>
+      </ul>
+    </div>
+    <div class="app-nav-right">
+      <span class="app-datetime" title="Текущие дата и время">
+        <span class="app-date"><i class="bi bi-calendar3 me-1"></i><span id="navbarDate">--.--.----</span></span>
+        <span class="app-clock ms-2"><i class="bi bi-clock me-1"></i><span id="navbarClockTime">--:--:--</span></span>
+      </span>
+      <span class="text-light small app-user" title="{{ user.username }}">
+        <i class="bi bi-person-circle me-1"></i>{{ user.username }}
+      </span>
+      {% if user.profile.role == 'admin' %}
+      <a class="btn btn-outline-light btn-sm" href="/admin/" target="_blank">
+        <i class="bi bi-gear me-1"></i>Админка
+      </a>
+      {% endif %}
+      <a class="btn btn-outline-light btn-sm" href="{% url 'logout' %}">
+        <i class="bi bi-box-arrow-right me-1"></i>Выйти
+      </a>
+    </div>
+  </div>
+</nav>
+{% endif %}
+
+<main class="container-fluid py-4 app-main">
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags|default:'info' }}{% endif %} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
+<script>
+// Текущее время и дата в шапке (обновление каждую секунду)
+(function () {
+  const el = document.getElementById('navbarClockTime');
+  if (!el) return;
+  const dateEl = document.getElementById('navbarDate');
+  function tick() {
+    try {
+      const d = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      el.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+      if (dateEl) {
+        dateEl.textContent = pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear();
+      }
+    } catch (e) { /* ignore */ }
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
+</body>
+</html>

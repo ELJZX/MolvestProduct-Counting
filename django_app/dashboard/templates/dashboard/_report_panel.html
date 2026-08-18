@@ -1,0 +1,91 @@
+{% load report_tags %}
+<div class="report-panel" id="panel-{{ tab }}" data-tab="{{ tab }}"{% if tab != 'shift' %} style="display:none"{% endif %}>
+  <div class="mb-3">
+    <div class="report-types">
+      {% for t, lbl in types|zip_lists:type_labels %}
+        <div class="form-check form-check-inline">
+          <input class="form-check-input report-type" type="radio" name="rtype_{{ tab }}" id="rtype_{{ tab }}_{{ t }}"
+                 value="{{ t }}"{% if forloop.first %} checked{% endif %}>
+          <label class="form-check-label" for="rtype_{{ tab }}_{{ t }}">{{ lbl|default:t }}</label>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="row g-3 align-items-end">
+    {% if tab == 'shift' %}
+      <div class="col-md-6">
+        <label class="form-label mb-1" for="date_shift">Дата</label>
+        <input type="date" class="form-control" id="date_shift" name="date" value="{{ today }}">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label mb-1" for="shiftSelect">Смена</label>
+        <select class="form-select" id="shiftSelect" name="shift">
+          <option value="1">Смена 1 (00:00–07:59)</option>
+          <option value="2">Смена 2 (08:00–23:59)</option>
+        </select>
+      </div>
+    {% elif tab == 'day' %}
+      <div class="col-md-6">
+        <label class="form-label mb-1" for="date_day">Дата</label>
+        <input type="date" class="form-control" id="date_day" name="date" value="{{ today }}">
+      </div>
+    {% elif tab == 'month' %}
+      <div class="col-md-6">
+        <label class="form-label mb-1" for="monthSelect">Месяц</label>
+        <select class="form-select" id="monthSelect" name="month">
+          <option value="1">Январь</option><option value="2">Февраль</option>
+          <option value="3">Март</option><option value="4">Апрель</option>
+          <option value="5">Май</option><option value="6">Июнь</option>
+          <option value="7">Июль</option><option value="8">Август</option>
+          <option value="9">Сентябрь</option><option value="10">Октябрь</option>
+          <option value="11">Ноябрь</option><option value="12">Декабрь</option>
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label mb-1" for="year_month">Год</label>
+        <select class="form-select" id="year_month" name="year">
+          {% for y in years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+        </select>
+      </div>
+    {% elif tab == 'quarter' %}
+      <div class="col-md-6">
+        <label class="form-label mb-1" for="year_quarter">Год</label>
+        <select class="form-select" id="year_quarter" name="year">
+          {% for y in years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label mb-1" for="quarterSelect">Квартал</label>
+        <select class="form-select" id="quarterSelect" name="quarter">
+          <option value="1">I (янв–март)</option>
+          <option value="2">II (апр–июнь)</option>
+          <option value="3">III (июл–сент)</option>
+          <option value="4">IV (окт–дек)</option>
+        </select>
+      </div>
+    {% elif tab == 'year' %}
+      <div class="col-md-6">
+        <label class="form-label mb-1" for="year_year">Год</label>
+        <select class="form-select" id="year_year" name="year">
+          {% for y in years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+        </select>
+      </div>
+    {% elif tab == 'period' %}
+      <div class="col-12">
+        <div class="fw-semibold mb-1">Формировать отчет за период</div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label mb-1" for="period_start">Начало</label>
+        <input type="datetime-local" class="form-control" id="period_start" name="start" value="{{ now_local }}">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label mb-1" for="period_end">Конец</label>
+        <input type="datetime-local" class="form-control" id="period_end" name="end" value="{{ now_local }}">
+      </div>
+      <div class="col-12 d-grid">
+        <button type="button" class="btn btn-outline-primary btn-full-period">Весь период</button>
+      </div>
+    {% endif %}
+  </div>
+</div>

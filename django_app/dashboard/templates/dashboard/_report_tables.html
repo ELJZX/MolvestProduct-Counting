@@ -1,0 +1,32 @@
+{% for table in result.tables %}
+  {% if table.columns %}
+  <div class="report-table-block">
+    <div class="report-table-title">{{ table.title }}</div>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0 report-table">
+        <thead>
+          <tr>
+            {% for c in table.columns %}<th>{{ c }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in table.rows %}
+            <tr>
+              {% for cell in row %}<td>{{ cell }}</td>{% endfor %}
+            </tr>
+          {% endfor %}
+          {% if table.total_row %}
+            <tr class="table-warning fw-semibold">
+              {% for cell in table.total_row %}<td>{{ cell }}</td>{% endfor %}
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+    {% if table.note %}<div class="text-muted small px-3 py-2">{{ table.note }}</div>{% endif %}
+  {% endif %}
+{% empty %}
+  <div class="text-center text-muted py-4">Нет данных для отображения.</div>
+{% endfor %}

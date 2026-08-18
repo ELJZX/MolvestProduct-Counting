@@ -1,0 +1,78 @@
+{% load report_tags %}
+<form id="productModalForm" method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+  <div class="row g-3">
+    <div class="col-md-3">
+      <label class="form-label" for="{{ form.code.id_for_label }}">Код (001–999)</label>
+      {{ form.code }}
+      {% if form.code.errors %}<div class="text-danger small">{{ form.code.errors }}</div>{% endif %}
+    </div>
+    <div class="col-md-5">
+      <label class="form-label" for="{{ form.name.id_for_label }}">Наименование</label>
+      {{ form.name }}
+      {% if form.name.errors %}<div class="text-danger small">{{ form.name.errors }}</div>{% endif %}
+    </div>
+    <div class="col-md-4">
+      <label class="form-label" for="{{ form.shop.id_for_label }}">Цех</label>
+      {{ form.shop }}
+      {% if form.shop.errors %}<div class="text-danger small">{{ form.shop.errors }}</div>{% endif %}
+    </div>
+    <div class="col-12">
+      <label class="form-label" for="{{ form.code_1c.id_for_label }}">Код 1С</label>
+      {{ form.code_1c }}
+      {% if form.code_1c.errors %}<div class="text-danger small">{{ form.code_1c.errors }}</div>{% endif %}
+    </div>
+    <div class="col-12">
+      <label class="form-label" for="{{ form.description.id_for_label }}">Описание</label>
+      {{ form.description }}
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Цвет на диаграмме (RGB)</label>
+      <div class="d-flex align-items-center gap-2">
+        {{ form.color }}
+      </div>
+      <div class="text-muted small mt-1">Выберите цвет пипеткой или кликом по сетке:</div>
+      <div class="rgb-grid mt-2" id="rgbGrid"></div>
+      {% if form.color.errors %}<div class="text-danger small">{{ form.color.errors }}</div>{% endif %}
+    </div>
+    <div class="col-md-6">
+      <label class="form-label" for="{{ form.image.id_for_label }}">Изображение (необязательно)</label>
+      {{ form.image }}
+      {% if product and product.image %}
+        <img src="{{ product.image.url }}" alt="" class="product-thumb mt-2">
+      {% endif %}
+    </div>
+  </div>
+</form>
+<script>
+(function () {
+  const SWATCHES = [
+    '#dc3545','#e5534b','#d1242f','#e83e8c','#bf3989','#9b2c6f',
+    '#fd7e14','#f0883e','#c2410c','#e0a800','#bf8700','#8a6d3b',
+    '#198754','#2da44e','#0aac8e','#0f5132','#0d9488','#0a7d63',
+    '#0dcaf0','#0a8cff','#1f6feb','#0d6efd','#0857c3','#3751a1',
+    '#6610f2','#8250df','#a475f9','#6f42c1','#8957e5','#4b2e83',
+    '#6c757d','#57606a','#adbac7','#495057','#24292f','#343a40',
+    '#f8d7da','#d63384','#ffc107','#fd7e14','#20c997','#0dcaf0'
+  ];
+  const grid = document.getElementById('rgbGrid');
+  const input = document.querySelector('#productModalForm input[type="color"]');
+  if (!grid || !input) return;
+  SWATCHES.forEach(function (c) {
+    const cell = document.createElement('button');
+    cell.type = 'button';
+    cell.className = 'rgb-cell';
+    cell.style.background = c;
+    cell.dataset.color = c;
+    cell.title = c;
+    if (input.value && c.toLowerCase() === input.value.toLowerCase()) cell.classList.add('active');
+    cell.addEventListener('click', function () {
+      input.value = c;
+      grid.querySelectorAll('.rgb-cell').forEach(function (el) { el.classList.remove('active'); });
+      cell.classList.add('active');
+    });
+    grid.appendChild(cell);
+  });
+})();
+</script>

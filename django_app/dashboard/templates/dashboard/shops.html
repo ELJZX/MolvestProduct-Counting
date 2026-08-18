@@ -1,0 +1,36 @@
+{% extends 'dashboard/base.html' %}
+{% block title %}Цеха — Учёт продукции{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0"><i class="bi bi-building me-2"></i>Цеха</h1>
+</div>
+<div class="row g-3">
+  {% for shop in shops %}
+    <div class="col-md-6 col-xl-4">
+      <div class="card h-100 shadow-sm shop-card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <h2 class="h5 mb-1">{{ shop.name }}</h2>
+              <div class="text-muted small mb-2">{{ shop.description|default:'—' }}</div>
+            </div>
+
+          </div>
+          <div class="d-flex gap-4 mt-3 flex-wrap">
+            <div><span class="fw-bold fs-5">{{ shop.lines_count }}</span> <span class="text-muted small">линий</span></div>
+            <div><span class="fw-bold fs-5 text-primary">{{ shop.today_total }}</span> <span class="text-muted small">ед. продукции</span></div>
+            <div><span class="fw-bold fs-5 text-danger">{{ shop.today_downtime }}</span> <span class="text-muted small">мин. простоя</span></div>
+          </div>
+        </div>
+        <div class="card-footer bg-white border-top-0">
+          <a href="{% url 'shop_detail' shop.pk %}" class="btn btn-outline-primary btn-sm w-100">
+            Перейти к линиям <i class="bi bi-arrow-right ms-1"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  {% empty %}
+    <div class="col-12"><div class="alert alert-info">Цеха ещё не добавлены. Выполните <code>python manage.py seed_data</code>.</div></div>
+  {% endfor %}
+</div>
+{% endblock %}
