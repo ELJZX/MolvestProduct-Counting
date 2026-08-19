@@ -207,20 +207,6 @@ def _downtime_events(paths, from_dt, to_dt):
     return events
 
 
-def _downtime_rows(events):
-    rows = []
-    for i, e in enumerate(events, start=1):
-        rows.append([
-            str(i),
-            timezone.localtime(e['start']).strftime('%d.%m.%Y %H:%M'),
-            timezone.localtime(e['end']).strftime('%d.%m.%Y %H:%M'),
-            _fmt_duration(e['minutes']),
-            e['product_name'],
-            'продолжается' if e['ongoing'] else 'завершён',
-        ])
-    return rows
-
-
 def _downtime_by(paths, from_dt, to_dt, bucket):
     acc = {}
     for e in _downtime_events(paths, from_dt, to_dt):

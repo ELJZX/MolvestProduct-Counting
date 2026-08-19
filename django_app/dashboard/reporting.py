@@ -316,7 +316,8 @@ def resolve_period(tab, params):
 
 def _base_qs(line, from_dt, to_dt):
     return (ProductionRecord.objects
-            .filter(line=line, minute_start__gte=from_dt, minute_start__lt=to_dt)
+            .filter(line=line, minute_start__gte=from_dt, minute_start__lt=to_dt,
+                    assignment__isnull=False)
             .select_related('assignment__product'))
 
 
@@ -412,20 +413,6 @@ def _rows_product_summary(line, from_dt, to_dt):
     return out, total
 
 
-def _downtime_rows(events):
-    rows = []
-    for i, e in enumerate(events, start=1):
-        rows.append([
-            str(i),
-            timezone.localtime(e['start']).strftime('%d.%m.%Y %H:%M'),
-            timezone.localtime(e['end']).strftime('%d.%m.%Y %H:%M'),
-            _fmt_duration(e['minutes']),
-            f"{e['product_code']} — {e['product_name']}",
-            'продолжается' if e['ongoing'] else 'завершён',
-        ])
-    return rows
-
-
 # ---------------------------------------------------------------------------
 # Сборка отчёта
 # ---------------------------------------------------------------------------
@@ -461,6 +448,8 @@ def build_report(tab, rtype, counter_id, params):
     chart = None
     report_meta = None
     report_id_out = None
+    # Карта продуктов (код -> цвет/1С/картинка) — один запрос на отчёт
+    pmap = _products_map()
 
     def fmt_ts(dt):
         return timezone.localtime(dt).strftime('%d.%m.%Y %H:%M')
@@ -487,7 +476,7 @@ def build_report(tab, rtype, counter_id, params):
             rows = []
             for r in per_prod:
                 code = r['assignment__product__code']
-                p = _products_map().get(code, {})
+                p = pmap.get(code, {})
                 rows.append([
                     code,
                     p.get('code_1c') or '—',
@@ -544,7 +533,7 @@ def build_report(tab, rtype, counter_id, params):
             rows = []
             for r in per_prod:
                 code = r['assignment__product__code']
-                p = _products_map().get(code, {})
+                p = pmap.get(code, {})
                 rows.append([
                     code,
                     p.get('code_1c') or '—',
