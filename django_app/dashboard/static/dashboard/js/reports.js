@@ -390,6 +390,10 @@
         return;
       }
       lastParams = params;
+      lastReportId = data.result.report_id || null;
+      // Идентификатор отчёта передаётся при выгрузке, чтобы номер в файле
+      // совпадал с номером сформированного на странице отчёта
+      const rid = lastReportId ? '&report_id=' + encodeURIComponent(lastReportId) : '';
       resultWrap.classList.remove('d-none');
       const emptyEl = $('reportsEmpty');
       if (emptyEl) emptyEl.classList.add('d-none');
@@ -409,8 +413,8 @@
       reportPeriod.textContent = data.result.period_label + ' · Счетчик: ' +
         (counterById[parseInt(params.counter, 10)] ? counterById[parseInt(params.counter, 10)].name + ' (' + counterById[parseInt(params.counter, 10)].line + ')' : '');
       renderChart(data.result.chart);
-      btnExportXlsx.href = '/reports/export/?fmt=xlsx&' + toQuery(params);
-      btnExportCsv.href = '/reports/export/?fmt=csv&' + toQuery(params);
+      btnExportXlsx.href = '/reports/export/?fmt=xlsx&' + toQuery(params) + rid;
+      btnExportCsv.href = '/reports/export/?fmt=csv&' + toQuery(params) + rid;
       btnExportToggle.disabled = false;
       buildStatus.textContent = 'Готово.';
     } catch (e) {

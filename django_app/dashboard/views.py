@@ -297,6 +297,7 @@ def reports_build(request):
         'period_label': result.get('period_label'),
         'chart': result.get('chart'),
         'range': result.get('range'),
+        'report_id': result.get('report_id'),
     }})
 
 
@@ -330,6 +331,8 @@ def reports_export(request):
         'period_label': result.get('period_label', ''),
         'counter': result.get('counter', ''),
         'generated_at': timezone.localtime().strftime('%d.%m.%Y %H:%M'),
+        # Шапка отчёта («Счетчик №:», «Линия:», ...) — в начало файла
+        'report_meta': result.get('meta') or [],
         'filename_xlsx': f'report_{request.GET.get("tab", "period")}_{request.GET.get("type", "total")}_{stamp}.xlsx',
         'filename_csv': f'report_{request.GET.get("tab", "period")}_{request.GET.get("type", "total")}_{stamp}.csv',
     }

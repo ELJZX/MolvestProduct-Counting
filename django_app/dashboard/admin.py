@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 
 from .models import (
     ControllerReading, Counter, Line, Product, ProductAssignment,
-    ProductionRecord, Shop, UserProfile,
+    ProductionRecord, ReportLog, Shop, UserProfile,
 )
 
 
@@ -70,6 +70,14 @@ class ControllerReadingAdmin(admin.ModelAdmin):
     list_display = ('line', 'product', 'total', 'delta', 'received_at')
     list_filter = ('line', 'product')
     date_hierarchy = 'received_at'
+
+
+@admin.register(ReportLog)
+class ReportLogAdmin(admin.ModelAdmin):
+    list_display = ('identifier', 'line', 'tab', 'rtype', 'period_start', 'period_end', 'number', 'created_at')
+    list_filter = ('tab', 'rtype', 'line')
+    search_fields = ('identifier', 'line__name')
+    date_hierarchy = 'created_at'
 
 
 class UserProfileInline(admin.StackedInline):

@@ -440,6 +440,30 @@ table.table {
   background: #f8f9fa;
   border-bottom: 1px solid #e9ecef;
 }
+/* Шапка отчёта (мета-строки) и строка по центру («Смена 1») */
+.report-meta {
+  background: #fff;
+  border: 1px solid #e9ecef;
+  border-radius: .6rem;
+  padding: .6rem 1rem;
+  margin-bottom: .75rem;
+}
+.report-meta-row {
+  font-size: .92rem;
+  padding: .15rem 0;
+}
+.report-meta-label {
+  font-weight: 700;
+  color: #0d2b52;
+}
+.report-title-row {
+  text-align: center;
+  font-weight: 700;
+  font-size: 1.05rem;
+  padding: .55rem 1rem;
+  background: #eef2f8;
+  border-bottom: 1px solid #e9ecef;
+}
 .report-table th {
   font-size: .85rem;
   white-space: nowrap;

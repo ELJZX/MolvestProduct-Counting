@@ -1,7 +1,17 @@
+{% if result.meta %}
+<div class="report-meta">
+  {% for label, value in result.meta %}
+    <div class="report-meta-row"><span class="report-meta-label">{{ label }}</span>&nbsp;{{ value }}</div>
+  {% endfor %}
+</div>
+{% endif %}
 {% for table in result.tables %}
+  {% if table.title_row %}
+    <div class="report-title-row">{{ table.title_row }}</div>
+  {% endif %}
   {% if table.columns %}
   <div class="report-table-block">
-    <div class="report-table-title">{{ table.title }}</div>
+    {% if table.title %}<div class="report-table-title">{{ table.title }}</div>{% endif %}
     <div class="table-responsive">
       <table class="table table-sm table-hover align-middle mb-0 report-table">
         <thead>

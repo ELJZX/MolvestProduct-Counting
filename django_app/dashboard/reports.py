@@ -196,9 +196,13 @@ def _fmt_cell(v):
 
 
 def export_tables_xlsx(meta, tables):
-    """Каждая таблица отчёта — отдельный лист Excel."""
+    """Каждая таблица отчёта — отдельный лист Excel.
+
+    meta['report_meta'] — шапка отчёта (строки «Счетчик №:», «Линия:», ...);
+    table['title_row'] — строка по центру (например «Смена 1»).
+    """
     from openpyxl import Workbook
-    from openpyxl.styles import Font
+    from openpyxl.styles import Alignment, Font
     from openpyxl.utils import get_column_letter
     header_font, header_fill, title_font = _xlsx_style()
 
@@ -210,10 +214,20 @@ def export_tables_xlsx(meta, tables):
         ws['A1'].font = title_font
         ws.append([f'{meta.get("period_label", "")} · Счетчик: {meta.get("counter", "")}'])
         ws.append([f'Сформирован: {meta.get("generated_at", "")}'])
-        ws.append([])
+        # Шапка отчёта (мета-строки) — только на первом листе
+        if idx == 1 and meta.get('report_meta'):
+            ws.append([])
+            for label, value in meta['report_meta']:
+                ws.append([f'{label} {value}'])
+                ws[ws.max_row][0].font = Font(bold=True, size=11)
+            ws.append([])
         if table.get('title'):
             ws.append([table['title']])
             ws[ws.max_row][0].font = Font(bold=True, size=12)
+        if table.get('title_row'):
+            ws.append([table['title_row']])
+            ws[ws.max_row][0].font = Font(bold=True, size=13)
+            ws[ws.max_row][0].alignment = Alignment(horizontal='center')
         columns = table.get('columns') or []
         if columns:
             ws.append(columns)
@@ -248,10 +262,17 @@ def export_tables_csv(meta, tables):
     writer.writerow([meta.get('title', 'Отчёт')])
     writer.writerow([f'{meta.get("period_label", "")} · Счетчик: {meta.get("counter", "")}'])
     writer.writerow([f'Сформирован: {meta.get("generated_at", "")}'])
+    # Шапка отчёта (мета-строки)
+    if meta.get('report_meta'):
+        writer.writerow([])
+        for label, value in meta['report_meta']:
+            writer.writerow([f'{label} {value}'])
     writer.writerow([])
     for table in tables:
         if table.get('title'):
             writer.writerow([table['title']])
+        if table.get('title_row'):
+            writer.writerow([table['title_row']])
         columns = table.get('columns') or []
         if columns:
             writer.writerow(columns)

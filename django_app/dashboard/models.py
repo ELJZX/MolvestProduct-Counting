@@ -364,3 +364,32 @@ class SystemConfig(models.Model):
         if not p.is_absolute():
             p = base / p
         return str(p)
+
+
+class ReportLog(models.Model):
+    """Журнал формирований отчётов.
+
+    Нужен для «Идентификатора отчёта»: база отслеживает, сколько раз отчёт
+    был сформирован за выбранный период (та же линия, вкладка, период),
+    и присваивает следующий порядковый номер.
+    """
+
+    line = models.ForeignKey(
+        Line, on_delete=models.CASCADE, related_name='report_logs',
+        verbose_name='Линия',
+    )
+    tab = models.CharField('Вкладка', max_length=20)
+    rtype = models.CharField('Тип отчёта', max_length=30)
+    period_start = models.DateTimeField('Начало периода')
+    period_end = models.DateTimeField('Окончание периода')
+    number = models.PositiveIntegerField('Номер за период')
+    identifier = models.CharField('Идентификатор отчёта', max_length=64)
+    created_at = models.DateTimeField('Сформирован', auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Формирование отчёта'
+        verbose_name_plural = 'Формирования отчётов'
+
+    def __str__(self):
+        return f'{self.identifier} · {self.line} · {self.get_tab_display()}'
