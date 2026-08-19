@@ -35,6 +35,7 @@
   let visibleLabels = [];
   let visibleDetails = [];
   let lastParams = null;
+  let lastReportId = null; // id записи ReportLog (идентификатор отчёта) для экспорта
 
   // Данные простоя на графике
   let minuteTs = [];      // ISO-минуты (минутный график), индекс == индекс столбца
