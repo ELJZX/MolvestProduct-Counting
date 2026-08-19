@@ -375,8 +375,9 @@ class ReportLog(models.Model):
     """
 
     line = models.ForeignKey(
-        Line, on_delete=models.CASCADE, related_name='report_logs',
-        verbose_name='Линия',
+        Line, null=True, blank=True, on_delete=models.CASCADE,
+        related_name='report_logs', verbose_name='Линия',
+        help_text='Пусто для запасного режима (файлы DBF).',
     )
     tab = models.CharField('Вкладка', max_length=20)
     rtype = models.CharField('Тип отчёта', max_length=30)
