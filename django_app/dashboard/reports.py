@@ -242,13 +242,7 @@ def export_tables_xlsx(meta, tables):
                 cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
                 merge_row(ws, ws.max_row, ncols)
 
-        # 4) Название дополнительной таблицы (листы 2+), если отличается
-        if idx > 1 and table.get('title'):
-            ws.append([table['title']])
-            ws[ws.max_row][0].font = Font(bold=True, size=12)
-            merge_row(ws, ws.max_row, ncols)
-
-        # 5) Строка по центру (например «Смена 1»)
+        # 4) Строка по центру (например «Смена 1»)
         if table.get('title_row'):
             ws.append([table['title_row']])
             ws[ws.max_row][0].font = Font(bold=True, size=13)
@@ -323,8 +317,6 @@ def export_tables_csv(meta, tables):
             writer.writerow([f'{label} {value}'])
     writer.writerow([])
     for table in tables:
-        if table.get('title'):
-            writer.writerow([table['title']])
         if table.get('title_row'):
             writer.writerow([table['title_row']])
         columns = table.get('columns') or []
