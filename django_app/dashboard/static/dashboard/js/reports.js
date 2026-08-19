@@ -63,6 +63,18 @@
     return m ? decodeURIComponent(m[2]) : '';
   }
 
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // Показ ошибки формирования отчёта: «Ошибка:» — красным
+  function showBuildError(msg) {
+    buildStatus.innerHTML = '<span class="text-danger fw-semibold">Ошибка:</span> ' +
+      escapeHtml(msg || 'Неизвестная ошибка');
+  }
+
   function fmtLocalInput(dt) {
     const pad = (n) => String(n).padStart(2, '0');
     return dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate()) +
@@ -387,7 +399,7 @@
       });
       const data = await resp.json();
       if (!resp.ok || !data.ok) {
-        buildStatus.textContent = 'Ошибка: ' + (data.error || resp.status);
+        showBuildError(data.error || ('HTTP ' + resp.status));
         return;
       }
       lastParams = params;
@@ -419,7 +431,7 @@
       btnExportToggle.disabled = false;
       buildStatus.textContent = 'Готово.';
     } catch (e) {
-      buildStatus.textContent = 'Ошибка: ' + e.message;
+      showBuildError(e.message);
     }
   }
 

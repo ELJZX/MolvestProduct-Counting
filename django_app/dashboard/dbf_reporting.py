@@ -60,11 +60,8 @@ def _resolve_files(counter_id, from_dt, to_dt):
         codes = dbf_reader.list_counter_codes(d)
         if code not in codes:
             found = ', '.join(sorted(codes)) if codes else '—'
-            return None, (
-                f'Код счётчика {code} не найден в файлах DBF '
-                f'(папка: {d}). Найдены коды: {found}.'
-            )
-        return None, f'Для выбранного периода файлы счётчика {code} не найдены (папка: {d}).'
+            return None, f'Код счётчика {code} не найден в файлах DBF. Найдены коды: {found}.'
+        return None, f'Для выбранного периода файлы счётчика {code} не найдены.'
     return [f['path'] for f in files], None
 
 
@@ -369,12 +366,12 @@ def _dbf_report_identity(code, tab, rtype, from_dt, to_dt, report_id):
     return identifier, rl.pk
 
 
-def _dbf_segment_rows(paths, from_dt, to_dt, pmap):
+def _dbf_segment_rows(paths, from_dt, to_dt, pmap, segments=None):
     """Строки по сегментам (сменам кода продукта) в файлах DBF.
 
     Возвращает (rows, total_count, total_downtime).
     """
-    segs = _dbf_shift_segments(paths, from_dt, to_dt)
+    segs = segments if segments is not None else _dbf_shift_segments(paths, from_dt, to_dt)
     rows = []
     total_count = 0
     total_downtime = 0
@@ -401,6 +398,26 @@ def _dbf_per_product_segments(paths, from_dt, to_dt):
     for s in _dbf_shift_segments(paths, from_dt, to_dt):
         acc[s['code']] = acc.get(s['code'], 0) + s['count']
     return acc
+
+
+# Служебные коды: отладка и эксперименты — не считаются реальной продукцией
+DEBUG_PRODUCT_CODES = {'888', '998', '999'}
+
+NO_REPORT_MESSAGE = 'Нет отчета за указанный период.'
+
+
+def _dbf_has_production(segments):
+    for s in segments:
+        if s['count'] > 0 and s['code'] not in DEBUG_PRODUCT_CODES:
+            return True
+    return False
+
+
+def _dbf_has_production_per_product(acc):
+    for code, count in acc.items():
+        if count > 0 and code not in DEBUG_PRODUCT_CODES:
+            return True
+    return False
 
 
 def build_report(tab, rtype, counter_id, params):
@@ -446,6 +463,8 @@ def build_report(tab, rtype, counter_id, params):
         if rtype == 'total':
             # Итоговый: код продукта, заводской код, наименование, количество
             per_prod = _dbf_per_product_segments(paths, from_dt, to_dt)
+            if not _dbf_has_production_per_product(per_prod):
+                return {'ok': False, 'error': NO_REPORT_MESSAGE}
             rows = []
             for pcode, count in sorted(per_prod.items()):
                 p = _prod_info(pcode, pmap)
@@ -460,6 +479,8 @@ def build_report(tab, rtype, counter_id, params):
         else:
             # Подробный и Простои: одинаковые колонки, различаются итогом
             segments = _dbf_shift_segments(paths, from_dt, to_dt)
+            if not _dbf_has_production(segments):
+                return {'ok': False, 'error': NO_REPORT_MESSAGE}
             rows = []
             total_count = 0
             total_downtime = 0
@@ -509,6 +530,8 @@ def build_report(tab, rtype, counter_id, params):
         if rtype == 'total':
             # Итоговый за сутки (без разделения на смены)
             per_prod = _dbf_per_product_segments(paths, from_dt, to_dt)
+            if not _dbf_has_production_per_product(per_prod):
+                return {'ok': False, 'error': NO_REPORT_MESSAGE}
             rows = []
             for pcode, count in sorted(per_prod.items()):
                 p = _prod_info(pcode, pmap)
@@ -525,8 +548,13 @@ def build_report(tab, rtype, counter_id, params):
             shift2_from = shift1_to
             columns = ['Код продукта', 'Заводской код', 'Наименование продукта',
                        'Кол-во продукции', 'Нач. подсчета', 'Период', 'Время простоя']
-            for sh, (sf, st) in [(1, (from_dt, shift1_to)), (2, (shift2_from, to_dt))]:
-                rows, total_count, _dt = _dbf_segment_rows(paths, sf, st, pmap)
+            segs1 = _dbf_shift_segments(paths, from_dt, shift1_to)
+            segs2 = _dbf_shift_segments(paths, shift2_from, to_dt)
+            if not (_dbf_has_production(segs1) or _dbf_has_production(segs2)):
+                return {'ok': False, 'error': NO_REPORT_MESSAGE}
+            for sh, (sf, st, segs) in [(1, (from_dt, shift1_to, segs1)),
+                                        (2, (shift2_from, to_dt, segs2))]:
+                rows, total_count, _dt = _dbf_segment_rows(paths, sf, st, pmap, segments=segs)
                 tables.append(_table(
                     '',  # название уже в шапке отчёта выше
                     columns, rows,
@@ -539,7 +567,10 @@ def build_report(tab, rtype, counter_id, params):
             # График без текстовой плашки: таблиц нет, отображается только график
         elif rtype == 'downtime':
             # Простои за сутки — как на вкладке «Смена», итог — общее время простоя
-            rows, _tc, total_downtime = _dbf_segment_rows(paths, from_dt, to_dt, pmap)
+            segments = _dbf_shift_segments(paths, from_dt, to_dt)
+            if not _dbf_has_production(segments):
+                return {'ok': False, 'error': NO_REPORT_MESSAGE}
+            rows, _tc, total_downtime = _dbf_segment_rows(paths, from_dt, to_dt, pmap, segments=segments)
             columns = ['Код продукта', 'Заводской код', 'Наименование продукта',
                        'Кол-во продукции', 'Нач. подсчета', 'Период', 'Время простоя']
             tables.append(_table(

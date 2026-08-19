@@ -129,12 +129,34 @@ def _report_identity(line, tab, rtype, from_dt, to_dt, report_id):
     return identifier, rl.pk
 
 
-def _segment_rows(line, from_dt, to_dt):
+# Служебные коды: отладка и эксперименты — не считаются реальной продукцией
+DEBUG_PRODUCT_CODES = {'888', '998', '999'}
+
+NO_REPORT_MESSAGE = 'Нет отчета за указанный период.'
+
+
+def _has_production_per_product(per_prod_rows):
+    """Есть ли реальная продукция в разбивке по продуктам (исключая 888/998/999)."""
+    for r in per_prod_rows:
+        if r['total'] > 0 and r['assignment__product__code'] not in DEBUG_PRODUCT_CODES:
+            return True
+    return False
+
+
+def _has_production_segments(segments):
+    """Есть ли реальная продукция в сегментах (исключая 888/998/999)."""
+    for s in segments:
+        if s['count'] > 0 and s['code'] not in DEBUG_PRODUCT_CODES:
+            return True
+    return False
+
+
+def _segment_rows(line, from_dt, to_dt, segments=None):
     """Строки по сегментам (сменам кода продукта): колонки подробного отчёта.
 
     Возвращает (rows, total_count, total_downtime).
     """
-    segments = _shift_segments(line, from_dt, to_dt)
+    segments = segments if segments is not None else _shift_segments(line, from_dt, to_dt)
     rows = []
     total_count = 0
     total_downtime = 0
@@ -460,6 +482,8 @@ def build_report(tab, rtype, counter_id, params):
         if rtype == 'total':
             # Итоговый: код продукта, заводской код, наименование, количество
             per_prod, _total = _per_product(line, from_dt, to_dt)
+            if not _has_production_per_product(per_prod):
+                return {'ok': False, 'error': NO_REPORT_MESSAGE}
             rows = []
             for r in per_prod:
                 code = r['assignment__product__code']
@@ -478,7 +502,10 @@ def build_report(tab, rtype, counter_id, params):
             ))
         else:
             # Подробный и Простои: одинаковые колонки, различаются итогом
-            rows, total_count, total_downtime = _segment_rows(line, from_dt, to_dt)
+            segments = _shift_segments(line, from_dt, to_dt)
+            if not _has_production_segments(segments):
+                return {'ok': False, 'error': NO_REPORT_MESSAGE}
+            rows, total_count, total_downtime = _segment_rows(line, from_dt, to_dt, segments=segments)
             columns = ['Код продукта', 'Заводской код', 'Наименование продукта',
                        'Кол-во продукции', 'Нач. подсчета', 'Период', 'Время простоя']
             if rtype == 'detail':
@@ -512,6 +539,8 @@ def build_report(tab, rtype, counter_id, params):
         if rtype == 'total':
             # Итоговый за сутки (без разделения на смены)
             per_prod, _total = _per_product(line, from_dt, to_dt)
+            if not _has_production_per_product(per_prod):
+                return {'ok': False, 'error': NO_REPORT_MESSAGE}
             rows = []
             for r in per_prod:
                 code = r['assignment__product__code']
@@ -533,8 +562,13 @@ def build_report(tab, rtype, counter_id, params):
             shift2_from = shift1_to
             columns = ['Код продукта', 'Заводской код', 'Наименование продукта',
                        'Кол-во продукции', 'Нач. подсчета', 'Период', 'Время простоя']
-            for sh, (sf, st) in [(1, (from_dt, shift1_to)), (2, (shift2_from, to_dt))]:
-                rows, total_count, _dt = _segment_rows(line, sf, st)
+            segs1 = _shift_segments(line, from_dt, shift1_to)
+            segs2 = _shift_segments(line, shift2_from, to_dt)
+            if not (_has_production_segments(segs1) or _has_production_segments(segs2)):
+                return {'ok': False, 'error': NO_REPORT_MESSAGE}
+            for sh, (sf, st, segs) in [(1, (from_dt, shift1_to, segs1)),
+                                        (2, (shift2_from, to_dt, segs2))]:
+                rows, total_count, _dt = _segment_rows(line, sf, st, segments=segs)
                 tables.append(_table(
                     '',  # название уже в шапке отчёта выше
                     columns, rows,
@@ -574,7 +608,10 @@ def build_report(tab, rtype, counter_id, params):
             # График без текстовой плашки: таблиц нет, отображается только график
         elif rtype == 'downtime':
             # Простои за сутки — как на вкладке «Смена», итог — общее время простоя
-            rows, _tc, total_downtime = _segment_rows(line, from_dt, to_dt)
+            segments = _shift_segments(line, from_dt, to_dt)
+            if not _has_production_segments(segments):
+                return {'ok': False, 'error': NO_REPORT_MESSAGE}
+            rows, _tc, total_downtime = _segment_rows(line, from_dt, to_dt, segments=segments)
             columns = ['Код продукта', 'Заводской код', 'Наименование продукта',
                        'Кол-во продукции', 'Нач. подсчета', 'Период', 'Время простоя']
             tables.append(_table(
