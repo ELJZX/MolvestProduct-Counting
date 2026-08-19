@@ -61,6 +61,23 @@
       ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
+  // Длительность: 45 -> '45 минут', 75 -> '1 час 15 минут'
+  function fmtDuration(minutes) {
+    const m = Math.round(minutes || 0);
+    const h = Math.floor(m / 60);
+    const mm = m % 60;
+    function plural(n, one, few, many) {
+      const n10 = n % 10, n100 = n % 100;
+      if (n10 === 1 && n100 !== 11) return one;
+      if (n10 >= 2 && n10 <= 4 && !(n100 >= 12 && n100 <= 14)) return few;
+      return many;
+    }
+    if (h === 0) return mm + ' ' + plural(mm, 'минута', 'минуты', 'минут');
+    if (mm === 0) return h + ' ' + plural(h, 'час', 'часа', 'часов');
+    return h + ' ' + plural(h, 'час', 'часа', 'часов') + ' ' +
+      mm + ' ' + plural(mm, 'минута', 'минуты', 'минут');
+  }
+
   function toLocalInput(dt) {
     const pad = (n) => String(n).padStart(2, '0');
     return dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate()) +
@@ -99,8 +116,9 @@
         idx = resumeIdx;
       }
       if (idx < 0) idx = 0;
+      // Точная длительность простоя (вместо «(продолжается)» — если идёт сейчас)
       const text = 'Простой: ' + fmtDT(ev.start) + ' – ' + fmtDT(ev.end) +
-        (ev.ongoing ? ' (продолжается)' : '') + ' · ' + ev.minutes + ' мин.';
+        ' · ' + fmtDuration(ev.minutes);
       cols.push({ idx: idx, text: text });
     });
     return cols;
