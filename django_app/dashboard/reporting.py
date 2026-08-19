@@ -196,11 +196,6 @@ def _local_hour():
     return RawSQL("EXTRACT(HOUR FROM minute_start AT TIME ZONE %s)::int", (TZ,))
 
 
-def shift_of(dt):
-    """Номер смены по локальному времени."""
-    return 1 if dt.hour < SHIFT_BREAK_HOUR else 2
-
-
 def _make_aware(naive):
     if naive is None:
         return None

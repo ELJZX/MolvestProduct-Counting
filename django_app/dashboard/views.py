@@ -19,8 +19,7 @@ from .models import (
 )
 from .reports import (
     build_day_chart_xlsx, build_downtime_csv, build_downtime_xlsx,
-    build_comparison_xlsx, build_comparison_csv, export_tables_csv,
-    export_tables_xlsx,
+    export_tables_csv, export_tables_xlsx,
 )
 
 
@@ -130,11 +129,6 @@ def line_list(request):
     if shop_id:
         qs = qs.filter(shop_id=shop_id)
     lines = list(qs)
-    today_start = services.today_local_start()
-    for line in lines:
-        line.today_total = (ProductionRecord.objects
-                            .filter(line=line, minute_start__gte=today_start)
-                            .aggregate(t=Sum('count'))['t'] or 0)
     return render(request, 'dashboard/lines.html', {
         'lines': lines,
         'shops': Shop.objects.all(),

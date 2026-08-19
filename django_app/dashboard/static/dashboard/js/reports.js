@@ -270,8 +270,10 @@
     el.innerHTML = '<div class="tt-body">' + imgHtml +
       '<div class="tt-text">' +
       '<div class="tt-count">' + Number(value || 0).toLocaleString('ru-RU') + ' шт.</div>' +
+      // Время: для минутных графиков показываем только «22:31» (без даты);
+      // полная дата остаётся только в графиках по дням/месяцам (в подписи нет времени)
       (label ? '<div class="tt-time">' + label + '</div>' : '') +
-      (d && d.ts ? '<div class="tt-1c">' + d.ts + '</div>' : '') +
+      ((d && d.ts && label && label.indexOf(':') === -1) ? '<div class="tt-1c">' + d.ts + '</div>' : '') +
       prodHtml +
       '</div></div>';
     placeTooltip(el, px, py);

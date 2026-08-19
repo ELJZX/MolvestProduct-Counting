@@ -1,4 +1,5 @@
 {% extends 'dashboard/base.html' %}
+{% load report_tags %}
 {% block title %}Цеха — Учёт продукции{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -19,7 +20,7 @@
           <div class="d-flex gap-4 mt-3 flex-wrap">
             <div><span class="fw-bold fs-5">{{ shop.lines_count }}</span> <span class="text-muted small">линий</span></div>
             <div><span class="fw-bold fs-5 text-primary">{{ shop.today_total }}</span> <span class="text-muted small">ед. продукции</span></div>
-            <div><span class="fw-bold fs-5 text-danger">{{ shop.today_downtime }}</span> <span class="text-muted small">мин. простоя</span></div>
+            <div><span class="fw-bold fs-5 text-danger">{{ shop.today_downtime|duration }}</span> <span class="text-muted small">время простоя</span></div>
           </div>
         </div>
         <div class="card-footer bg-white border-top-0">

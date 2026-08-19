@@ -26,8 +26,6 @@
           <th>Линия</th>
           <th>Текущий продукт</th>
           <th>Задание с</th>
-          <th class="text-end">За сегодня</th>
-          <th class="text-end">Всего по заданию</th>
           <th>Статус</th>
           <th></th>
         </tr>
@@ -45,14 +43,12 @@
             <td class="small">
               {% if line.current_assignment %}{{ line.current_assignment.started_at|date:'d.m.Y H:i' }}{% else %}—{% endif %}
             </td>
-            <td class="text-end fw-semibold">{{ line.today_total }}</td>
-            <td class="text-end">{{ line.current_assignment.total_count|default:'0' }}</td>
             <td>
               <span class="badge text-bg-{{ line.status.1 }}">{{ line.status.0 }}</span>
             </td>
             <td class="text-end">
-              <a href="{% url 'line_detail' line.pk %}" class="btn btn-sm btn-outline-primary">
-                <i class="bi bi-bar-chart"></i>
+              <a href="{% url 'line_detail' line.pk %}" class="btn btn-sm btn-outline-primary text-nowrap">
+                <i class="bi bi-bar-chart me-1"></i>График в реальном времени
               </a>
             </td>
           </tr>
