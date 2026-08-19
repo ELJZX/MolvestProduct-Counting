@@ -96,6 +96,16 @@ body {
   padding: .32rem .75rem;
   border-radius: .55rem;
 }
+/* Метка версии сборки */
+.app-version {
+  font-size: .75rem;
+  color: rgba(255, 255, 255, .55);
+  border: 1px solid rgba(255, 255, 255, .22);
+  border-radius: .4rem;
+  padding: .1rem .4rem;
+  white-space: nowrap;
+  user-select: none;
+}
 /* Очень узкие экраны / крупный масштаб: прячем дату, оставляем время */
 @media (max-width: 575.98px) {
   .app-datetime .app-date { display: none; }

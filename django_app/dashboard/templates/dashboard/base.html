@@ -7,7 +7,7 @@
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 {% load static %}
-<link rel="stylesheet" href="{% static 'dashboard/css/site.css' %}?v=11">
+<link rel="stylesheet" href="{% static 'dashboard/css/site.css' %}?v=12">
 </head>
 <body>
 {% if user.is_authenticated %}
@@ -57,6 +57,7 @@
         <span class="app-date"><i class="bi bi-calendar3 me-1"></i><span id="navbarDate">--.--.----</span></span>
         <span class="app-clock ms-2"><i class="bi bi-clock me-1"></i><span id="navbarClockTime">--:--:--</span></span>
       </span>
+      {% if app_version %}<span class="app-version" title="Версия сборки">v{{ app_version }}</span>{% endif %}
       <span class="text-light small app-user" title="{{ user.username }}">
         <i class="bi bi-person-circle me-1"></i>{{ user.username }}
       </span>

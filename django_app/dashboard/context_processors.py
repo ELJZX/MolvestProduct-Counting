@@ -16,3 +16,8 @@ def app_logo(request):
     except Exception:
         url = None
     return {'app_logo_url': url}
+
+
+def app_version(request):
+    """Версия сборки для метки в шапке."""
+    return {'app_version': getattr(settings, 'APP_VERSION', '')}

@@ -64,6 +64,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'dashboard.context_processors.app_logo',
+                'dashboard.context_processors.app_version',
             ],
         },
     },
@@ -121,6 +122,9 @@ STATICFILES_DIRS = [BASE_DIR / 'dashboard' / 'static']
 
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Версия сборки (видна в шапке — по ней легко понять, какая версия запущена)
+APP_VERSION = '1.3'
 
 # ---- DRF ----
 REST_FRAMEWORK = {
