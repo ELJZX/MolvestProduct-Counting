@@ -28,24 +28,6 @@ SHIFT_LABELS = {
 # Журнал формирований отчётов (идентификатор отчёта)
 # ---------------------------------------------------------------------------
 
-def _create_report_log(line, tab, rtype, from_dt, to_dt):
-    """Создаёт запись о формировании отчёта и возвращает её.
-
-    Номер — порядковый для выбранного периода (та же линия, вкладка, период):
-    сколько раз отчёт уже формировался за этот период, таков и номер + 1.
-    """
-    count = ReportLog.objects.filter(
-        line=line, tab=tab, period_start=from_dt, period_end=to_dt,
-    ).count()
-    number = count + 1
-    identifier = f'{timezone.localtime(from_dt):%Y%m%d}-{number:03d}'
-    return ReportLog.objects.create(
-        line=line, tab=tab, rtype=rtype,
-        period_start=from_dt, period_end=to_dt,
-        number=number, identifier=identifier,
-    )
-
-
 def _plural(n, one, few, many):
     """Русские формы множественного числа: _plural(3, 'час', 'часа', 'часов')."""
     n10 = n % 10
@@ -120,6 +102,56 @@ def _shift_segments(line, from_dt, to_dt):
             e['minutes'] for e in services.downtime_events(line, s['seg_start'], s['seg_end'])
         )
     return merged
+
+
+def _report_identity(line, tab, rtype, from_dt, to_dt, report_id):
+    """Идентификатор отчёта: номер из журнала ReportLog для выбранного периода.
+
+    Если передан report_id (при экспорте) — используется существующая запись,
+    новый номер не создаётся.
+    """
+    if report_id:
+        try:
+            rl = ReportLog.objects.get(pk=report_id)
+            return rl.identifier, rl.pk
+        except (ReportLog.DoesNotExist, ValueError, TypeError):
+            return None, None
+    count = ReportLog.objects.filter(
+        line=line, tab=tab, period_start=from_dt, period_end=to_dt,
+    ).count()
+    number = count + 1
+    identifier = f'{timezone.localtime(from_dt):%Y%m%d}-{number:03d}'
+    rl = ReportLog.objects.create(
+        line=line, tab=tab, rtype=rtype,
+        period_start=from_dt, period_end=to_dt,
+        number=number, identifier=identifier,
+    )
+    return identifier, rl.pk
+
+
+def _segment_rows(line, from_dt, to_dt):
+    """Строки по сегментам (сменам кода продукта): колонки подробного отчёта.
+
+    Возвращает (rows, total_count, total_downtime).
+    """
+    segments = _shift_segments(line, from_dt, to_dt)
+    rows = []
+    total_count = 0
+    total_downtime = 0
+    for s in segments:
+        dt_str = _fmt_duration(s['downtime']) if s['downtime'] else '—'
+        rows.append([
+            s['code'],
+            s['code_1c'] or '—',
+            s['name'],
+            f'{s["count"]:,}'.replace(',', ' '),
+            timezone.localtime(s['start']).strftime('%H:%M'),
+            f'{timezone.localtime(s["seg_start"]):%H:%M} – {timezone.localtime(s["seg_end"]):%H:%M}',
+            dt_str,
+        ])
+        total_count += s['count']
+        total_downtime += s['downtime']
+    return rows, total_count, total_downtime
 
 
 # ---------------------------------------------------------------------------
@@ -414,22 +446,9 @@ def build_report(tab, rtype, counter_id, params):
     # ----- Смена -----
     if tab == 'shift':
         shift_no = int(params.get('shift') or 1)
-
-        # Идентификатор отчёта: база отслеживает число формирований за период.
-        # При экспорте передаётся report_id — повторный счётчик не создаётся.
-        report_id = params.get('report_id')
-        if report_id:
-            try:
-                rl = ReportLog.objects.get(pk=report_id)
-                identifier = rl.identifier
-                report_id_out = rl.pk
-            except (ReportLog.DoesNotExist, ValueError, TypeError):
-                identifier = None
-        else:
-            rl = _create_report_log(line, tab, rtype, from_dt, to_dt)
-            identifier = rl.identifier
-            report_id_out = rl.pk
-
+        identifier, report_id_out = _report_identity(
+            line, tab, rtype, from_dt, to_dt, params.get('report_id'),
+        )
         report_meta = [
             ('Счетчик №:', str(counter.pk)),
             ('Линия:', line.name),
@@ -459,23 +478,7 @@ def build_report(tab, rtype, counter_id, params):
             ))
         else:
             # Подробный и Простои: одинаковые колонки, различаются итогом
-            segments = _shift_segments(line, from_dt, to_dt)
-            rows = []
-            total_count = 0
-            total_downtime = 0
-            for s in segments:
-                dt_str = _fmt_duration(s['downtime']) if s['downtime'] else '—'
-                rows.append([
-                    s['code'],
-                    s['code_1c'] or '—',
-                    s['name'],
-                    f'{s["count"]:,}'.replace(',', ' '),
-                    timezone.localtime(s['start']).strftime('%H:%M'),
-                    f'{timezone.localtime(s["seg_start"]):%H:%M} – {timezone.localtime(s["seg_end"]):%H:%M}',
-                    dt_str,
-                ])
-                total_count += s['count']
-                total_downtime += s['downtime']
+            rows, total_count, total_downtime = _segment_rows(line, from_dt, to_dt)
             columns = ['Код продукта', 'Заводской код', 'Наименование продукта',
                        'Кол-во продукции', 'Нач. подсчета', 'Период', 'Время простоя']
             if rtype == 'detail':
@@ -496,40 +499,49 @@ def build_report(tab, rtype, counter_id, params):
 
     # ----- Сутки -----
     elif tab == 'day':
+        identifier, report_id_out = _report_identity(
+            line, tab, rtype, from_dt, to_dt, params.get('report_id'),
+        )
+        report_meta = [
+            ('Счетчик №:', str(counter.pk)),
+            ('Линия:', line.name),
+            ('Период:', f'{fmt_ts(from_dt)} – {fmt_ts(to_dt)}'),
+            ('Идентификатор отчета:', identifier or '—'),
+        ]
+
         if rtype == 'total':
-            rows, total = _rows_product_summary(line, from_dt, to_dt)
+            # Итоговый за сутки (без разделения на смены)
+            per_prod, _total = _per_product(line, from_dt, to_dt)
+            rows = []
+            for r in per_prod:
+                code = r['assignment__product__code']
+                p = _products_map().get(code, {})
+                rows.append([
+                    code,
+                    p.get('code_1c') or '—',
+                    r['assignment__product__name'],
+                    f'{r["total"]:,}'.replace(',', ' '),
+                ])
             tables.append(_table(
-                'Отчёт итоговый (по продуктам)',
-                ['Код', 'Продукт', 'Кол-во, шт.', '%'],
-                rows, total_row=['', 'ИТОГО', f'{total:,}'.replace(',', ' '), '100,0%'],
+                '',  # название уже в шапке отчёта выше
+                ['Код продукта', 'Заводской код', 'Наименование продукта', 'Количество'],
+                rows,
             ))
         elif rtype == 'detail_shifts':
-            rows = []
-            last_shift = None
-            shift_total = {1: 0, 2: 0}
-            for r in _minute_records(line, from_dt, to_dt):
-                sh = shift_of(timezone.localtime(r.minute_start))
-                if last_shift is not None and sh != last_shift:
-                    rows.append(['—', '', f'ИТОГО по смене {last_shift}', shift_total[last_shift], ''])
-                    last_shift = sh
-                if last_shift is None:
-                    last_shift = sh
-                shift_total[sh] += r.count
-                rows.append([
-                    timezone.localtime(r.minute_start).strftime('%H:%M'),
-                    f'Смена {sh}',
-                    r.assignment.product.name if r.assignment else '—',
-                    r.count,
-                    '',
-                ])
-            if last_shift is not None:
-                rows.append(['—', '', f'ИТОГО по смене {last_shift}', shift_total[last_shift], ''])
-            tables.append(_table(
-                'Отчёт подробный (с раскладкой по сменам)',
-                ['Время', 'Смена', 'Продукт', 'Кол-во, шт.', ''],
-                rows,
-                total_row=['', '', 'ИТОГО', shift_total[1] + shift_total[2], ''],
-            ))
+            # Подробный с раскладкой по сменам: две таблицы (Смена 1, Смена 2)
+            shift1_to = from_dt + datetime.timedelta(hours=SHIFT_BREAK_HOUR)
+            shift2_from = shift1_to
+            columns = ['Код продукта', 'Заводской код', 'Наименование продукта',
+                       'Кол-во продукции', 'Нач. подсчета', 'Период', 'Время простоя']
+            for sh, (sf, st) in [(1, (from_dt, shift1_to)), (2, (shift2_from, to_dt))]:
+                rows, total_count, _dt = _segment_rows(line, sf, st)
+                tables.append(_table(
+                    '',  # название уже в шапке отчёта выше
+                    columns, rows,
+                    total_row=['', '', 'ИТОГО', f'{total_count:,}'.replace(',', ' '),
+                               '', '', ''],
+                    title_row=f'Смена {sh}',
+                ))
         elif rtype == 'chart':
             series = services.build_minute_series(line, from_dt, to_dt)
             products_map = _products_map()
@@ -561,13 +573,14 @@ def build_report(tab, rtype, counter_id, params):
             }
             # График без текстовой плашки: таблиц нет, отображается только график
         elif rtype == 'downtime':
-            events = _downtime_events(line, from_dt, to_dt)
-            rows = _downtime_rows(events)
-            total_min = sum(e['minutes'] for e in events)
+            # Простои за сутки — как на вкладке «Смена», итог — общее время простоя
+            rows, _tc, total_downtime = _segment_rows(line, from_dt, to_dt)
+            columns = ['Код продукта', 'Заводской код', 'Наименование продукта',
+                       'Кол-во продукции', 'Нач. подсчета', 'Период', 'Время простоя']
             tables.append(_table(
-                'Отчёт о простоях (подробный)',
-                ['№', 'Начало', 'Окончание', 'Время', 'Продукт', 'Статус'],
-                rows, total_row=['', '', 'ИТОГО', total_min, '', ''],
+                '',  # название уже в шапке отчёта выше
+                columns, rows,
+                total_row=['', '', 'ИТОГО', '', '', '', _fmt_duration(total_downtime)],
             ))
 
     # ----- Месяц -----
