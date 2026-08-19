@@ -1,16 +1,18 @@
 """Контекст-процессоры: общие данные для всех шаблонов."""
-from .models import SystemConfig
+import os
+
+from django.conf import settings
 
 
 def app_logo(request):
-    """URL логотипа из настроек системы (для шапки сайта).
+    """URL логотипа из корня проекта (файл logo.png рядом с django_app/).
 
-    В шаблонах доступна переменная {{ app_logo_url }}: если в настройках
-    системы загружен логотип — его URL, иначе None.
+    Логотип «вшит» в проект по умолчанию: пока файл logo.png существует,
+    в шапке показывается изображение, иначе — стандартная иконка.
     """
     try:
-        cfg = SystemConfig.get()
-        url = cfg.logo.url if cfg.logo and cfg.logo.name else None
+        logo_path = settings.BASE_DIR.parent / 'logo.png'
+        url = '/logo.png' if os.path.isfile(str(logo_path)) else None
     except Exception:
         url = None
     return {'app_logo_url': url}

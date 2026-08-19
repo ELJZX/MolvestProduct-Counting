@@ -1,11 +1,12 @@
 """Представления веб-интерфейса."""
 import json
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Count, Q, Sum
-from django.http import HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -231,7 +232,36 @@ def reports_page(request):
         'today': now_local.strftime('%Y-%m-%d'),
         'now_local': now_local.strftime('%Y-%m-%dT%H:%M'),
         'data_source_label': cfg.get_data_source_display(),
+        'data_source_dbf': cfg.data_source == SystemConfig.DATA_SOURCE_DBF,
+        'is_admin': getattr(getattr(request.user, 'profile', None), 'role', None) == 'admin',
     })
+
+
+@login_required
+@role_required('admin')
+def reports_toggle_source(request):
+    """Переключение источника данных для отчётов: БД PostgreSQL <-> файлы DBF."""
+    if request.method == 'POST':
+        cfg = SystemConfig.get()
+        cfg.data_source = (
+            SystemConfig.DATA_SOURCE_DBF
+            if cfg.data_source == SystemConfig.DATA_SOURCE_DB
+            else SystemConfig.DATA_SOURCE_DB
+        )
+        cfg.save()
+        messages.success(request, f'Источник данных переключён: {cfg.get_data_source_display()}.')
+    return redirect('reports')
+
+
+def site_logo(request):
+    """Логотип проекта: файл logo.png в корне (рядом с django_app/).
+
+    Доступен всем (включая страницу входа), без авторизации.
+    """
+    path = settings.BASE_DIR.parent / 'logo.png'
+    if not path.is_file():
+        raise Http404('Логотип не найден')
+    return FileResponse(open(path, 'rb'), content_type='image/png')
 
 
 @login_required

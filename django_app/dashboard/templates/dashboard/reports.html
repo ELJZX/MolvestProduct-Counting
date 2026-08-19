@@ -8,9 +8,18 @@
     <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
       <div>
         <h1 class="h3 mb-0"><i class="bi bi-bar-chart-line me-2"></i>Отчёты</h1>
-        <div class="text-muted small mt-1">Источник данных: <span class="fw-semibold" id="dataSourceBadge">{{ data_source_label }}</span></div>
       </div>
-      <div class="d-flex gap-2 flex-wrap">
+      <div class="d-flex gap-2 flex-wrap align-items-center">
+        {% if is_admin %}
+        <form method="post" action="{% url 'reports_toggle_source' %}" class="d-inline" title="Переключить источник данных для отчётов">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm {% if data_source_dbf %}btn-outline-warning{% else %}btn-outline-primary{% endif %}">
+            <i class="bi bi-arrow-left-right me-1"></i>Источник: {{ data_source_label }}
+          </button>
+        </form>
+        {% else %}
+        <span class="text-muted small">Источник: <span class="fw-semibold">{{ data_source_label }}</span></span>
+        {% endif %}
         <div class="btn-group">
           <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" id="btnExportToggle" disabled>
             <i class="bi bi-download me-1"></i>Выгрузить отчёт
