@@ -10,7 +10,7 @@ def _xlsx_style():
     from openpyxl.styles import Font, PatternFill
     return (
         Font(bold=True, color='FFFFFF'),
-        PatternFill('solid', fgColor='1F4E78'),
+        PatternFill('solid', fgColor='FF1F4E78'),
         Font(bold=True, size=14),
     )
 
@@ -198,51 +198,87 @@ def _fmt_cell(v):
 def export_tables_xlsx(meta, tables):
     """Каждая таблица отчёта — отдельный лист Excel.
 
-    meta['report_meta'] — шапка отчёта (строки «Счетчик №:», «Линия:», ...);
-    table['title_row'] — строка по центру (например «Смена 1»).
+    Формат по образцу: объединённый заголовок отчёта по ширине листа,
+    «Сформирован:», шапка отчёта (мета-строки, каждая объединена по ширине),
+    шапка таблицы (жирная, по центру, на тёмно-синем фоне), данные, итог.
+    Ширина колонок — по количеству символов.
     """
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font
     from openpyxl.utils import get_column_letter
-    header_font, header_fill, title_font = _xlsx_style()
+    header_font, header_fill, _ = _xlsx_style()
+
+    def merge_row(ws, row_idx, ncols):
+        if ncols > 1:
+            ws.merge_cells(start_row=row_idx, start_column=1,
+                           end_row=row_idx, end_column=ncols)
 
     wb = Workbook()
     wb.remove(wb.active)
     for idx, table in enumerate(tables, start=1):
         ws = wb.create_sheet(f'Лист{idx}')
+        columns = table.get('columns') or []
+        ncols = max(len(columns), 1)
+        last_col = get_column_letter(ncols)
+
+        # 1) Заголовок отчёта — объединён по ширине, по центру
         ws.append([meta.get('title', 'Отчёт')])
-        ws['A1'].font = title_font
-        ws.append([f'{meta.get("period_label", "")} · Счетчик: {meta.get("counter", "")}'])
+        ws['A1'].font = Font(bold=True, size=14)
+        ws['A1'].alignment = Alignment(horizontal='center', vertical='top', wrap_text=True)
+        ws.row_dimensions[1].height = 22.5
+        merge_row(ws, 1, ncols)
+
+        # 2) Сформирован
         ws.append([f'Сформирован: {meta.get("generated_at", "")}'])
-        # Шапка отчёта (мета-строки) — только на первом листе
+        ws[ws.max_row][0].alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+        merge_row(ws, ws.max_row, ncols)
+
+        # 3) Шапка отчёта (мета-строки) — только на первом листе
         if idx == 1 and meta.get('report_meta'):
-            ws.append([])
             for label, value in meta['report_meta']:
                 ws.append([f'{label} {value}'])
-                ws[ws.max_row][0].font = Font(bold=True, size=11)
-            ws.append([])
-        if table.get('title'):
+                cell = ws[ws.max_row][0]
+                cell.font = Font(bold=True, size=11)
+                cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+                merge_row(ws, ws.max_row, ncols)
+
+        # 4) Название дополнительной таблицы (листы 2+), если отличается
+        if idx > 1 and table.get('title'):
             ws.append([table['title']])
             ws[ws.max_row][0].font = Font(bold=True, size=12)
+            merge_row(ws, ws.max_row, ncols)
+
+        # 5) Строка по центру (например «Смена 1»)
         if table.get('title_row'):
             ws.append([table['title_row']])
             ws[ws.max_row][0].font = Font(bold=True, size=13)
             ws[ws.max_row][0].alignment = Alignment(horizontal='center')
-        columns = table.get('columns') or []
+            merge_row(ws, ws.max_row, ncols)
+
+        # 6) Шапка таблицы — жирная белая на тёмно-синем, по центру
+        header_row = ws.max_row
         if columns:
             ws.append(columns)
-            for cell in ws[ws.max_row]:
+            header_row = ws.max_row
+            for cell in ws[header_row]:
                 cell.font = header_font
                 cell.fill = header_fill
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+
+        # 7) Данные
         for row in table.get('rows') or []:
             ws.append([_fmt_cell(v) for v in row])
+
+        # 8) Итог — жирный
         if table.get('total_row'):
             ws.append([_fmt_cell(v) for v in table['total_row']])
             for cell in ws[ws.max_row]:
                 cell.font = Font(bold=True)
+
         if table.get('note'):
             ws.append([])
             ws.append([table['note']])
+
         if columns:
             # Ширина колонок по количеству символов в заголовке, данных и итоге
             col_lens = [len(str(c)) for c in columns]
@@ -261,13 +297,14 @@ def export_tables_xlsx(meta, tables):
                 caps.append(width)
             for col_idx, width in enumerate(caps, start=1):
                 ws.column_dimensions[get_column_letter(col_idx)].width = width
-            # Страховка: если текст длиннее ширины колонки — переносим на новую строку
+            # Страховка: если текст длиннее ширины колонки — перенос на новую строку
             for row_idx in range(1, ws.max_row + 1):
                 for col_idx, cw in enumerate(caps, start=1):
                     cell = ws.cell(row=row_idx, column=col_idx)
                     if cell.value is not None and len(str(cell.value)) > cw:
                         cell.alignment = Alignment(wrap_text=True, vertical='top')
-        ws.freeze_panes = 'A5'
+
+        ws.freeze_panes = f'A{header_row + 1}'
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -279,11 +316,9 @@ def export_tables_csv(meta, tables):
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=';')
     writer.writerow([meta.get('title', 'Отчёт')])
-    writer.writerow([f'{meta.get("period_label", "")} · Счетчик: {meta.get("counter", "")}'])
     writer.writerow([f'Сформирован: {meta.get("generated_at", "")}'])
     # Шапка отчёта (мета-строки)
     if meta.get('report_meta'):
-        writer.writerow([])
         for label, value in meta['report_meta']:
             writer.writerow([f'{label} {value}'])
     writer.writerow([])

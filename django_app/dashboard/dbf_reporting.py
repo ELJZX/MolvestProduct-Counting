@@ -416,7 +416,7 @@ def build_report(tab, rtype, counter_id, params):
                 rows.append([pcode, p['code_1c'] or '—', p['name'],
                              f'{count:,}'.replace(',', ' ')])
             tables.append(_table(
-                'Отчёт итоговый',
+                '',  # название уже в шапке отчёта выше
                 ['Код продукта', 'Заводской код', 'Наименование продукта', 'Количество'],
                 rows,
                 title_row=f'Смена {shift_no}',
@@ -445,14 +445,14 @@ def build_report(tab, rtype, counter_id, params):
                        'Кол-во продукции', 'Нач. подсчета', 'Период', 'Время простоя']
             if rtype == 'detail':
                 tables.append(_table(
-                    'Отчёт подробный',
+                    '',  # название уже в шапке отчёта выше
                     columns, rows,
                     total_row=['', '', 'ИТОГО', f'{total_count:,}'.replace(',', ' '),
                                '', '', ''],
                 ))
             else:  # downtime
                 tables.append(_table(
-                    'Отчёт о простоях (подробный)',
+                    '',  # название уже в шапке отчёта выше
                     columns, rows,
                     total_row=['', '', 'ИТОГО', '', '', '', _fmt_duration(total_downtime)],
                 ))

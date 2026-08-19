@@ -326,8 +326,12 @@ def reports_export(request):
         return redirect('reports')
 
     stamp = timezone.localtime().strftime('%Y-%m-%d_%H-%M')
+    tab_label = {
+        'shift': 'Смена', 'day': 'Сутки', 'month': 'Месяц',
+        'quarter': 'Квартал', 'year': 'Год', 'period': 'Период',
+    }.get(tab, tab)
     meta = {
-        'title': f'Отчёт: {result.get("title")}',
+        'title': f'{result.get("title")} ({tab_label})',
         'period_label': result.get('period_label', ''),
         'counter': result.get('counter', ''),
         'generated_at': timezone.localtime().strftime('%d.%m.%Y %H:%M'),
