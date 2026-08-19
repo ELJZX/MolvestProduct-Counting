@@ -17,7 +17,7 @@ from django.utils import timezone
 
 from . import dbf_reader
 from .models import Product, SystemConfig
-from .reporting import SHIFT_BREAK_HOUR, _table, resolve_period
+from .reporting import SHIFT_BREAK_HOUR, _fmt_duration, _table, resolve_period
 
 MINUTE = datetime.timedelta(minutes=1)
 
@@ -217,7 +217,7 @@ def _downtime_rows(events):
             str(i),
             timezone.localtime(e['start']).strftime('%d.%m.%Y %H:%M'),
             timezone.localtime(e['end']).strftime('%d.%m.%Y %H:%M'),
-            e['minutes'],
+            _fmt_duration(e['minutes']),
             e['product_name'],
             'продолжается' if e['ongoing'] else 'завершён',
         ])
@@ -358,7 +358,7 @@ def build_report(tab, rtype, counter_id, params):
             total_min = sum(e['minutes'] for e in events)
             tables.append(_table(
                 'Отчёт о простоях (подробный)',
-                ['№', 'Начало', 'Окончание', 'Минут', 'Продукт', 'Статус'],
+                ['№', 'Начало', 'Окончание', 'Время', 'Продукт', 'Статус'],
                 _downtime_rows(events), total_row=['', '', 'ИТОГО', total_min, '', ''],
             ))
 
@@ -400,7 +400,7 @@ def build_report(tab, rtype, counter_id, params):
             total_min = sum(e['minutes'] for e in events)
             tables.append(_table(
                 'Отчёт о простоях (подробный)',
-                ['№', 'Начало', 'Окончание', 'Минут', 'Продукт', 'Статус'],
+                ['№', 'Начало', 'Окончание', 'Время', 'Продукт', 'Статус'],
                 _downtime_rows(events), total_row=['', '', 'ИТОГО', total_min, '', ''],
             ))
 
@@ -436,11 +436,11 @@ def build_report(tab, rtype, counter_id, params):
             # График без текстовой плашки: таблиц нет, отображается только график
         elif rtype == 'downtime':
             items = _downtime_by(paths, from_dt, to_dt, 'day')
-            rows = [[timezone.localtime(d).strftime('%d.%m.%Y'), m] for d, m in items]
+            rows = [[timezone.localtime(d).strftime('%d.%m.%Y'), _fmt_duration(m)] for d, m in items]
             total = sum(m for _, m in items)
             tables.append(_table(
                 'Отчёт о простоях (сводный, по дням)',
-                ['Дата', 'Минут простоя'], rows, total_row=['ИТОГО', total]))
+                ['Дата', 'Время простоя'], rows, total_row=['ИТОГО', _fmt_duration(total)]))
         elif rtype == 'gross':
             per_prod = _per_product(paths, from_dt, to_dt)
             total = sum(per_prod.values())
@@ -486,11 +486,11 @@ def build_report(tab, rtype, counter_id, params):
                 rows, total_row=['', 'ИТОГО', total]))
         elif rtype == 'downtime':
             items = _downtime_by(paths, from_dt, to_dt, 'month')
-            rows = [[timezone.localtime(m).strftime('%m.%Y'), mins] for m, mins in items]
+            rows = [[timezone.localtime(m).strftime('%m.%Y'), _fmt_duration(mins)] for m, mins in items]
             total = sum(m for _, m in items)
             tables.append(_table(
                 'Отчёт о простоях (сводный, по месяцам)',
-                ['Месяц', 'Минут простоя'], rows, total_row=['ИТОГО', total]))
+                ['Месяц', 'Время простоя'], rows, total_row=['ИТОГО', _fmt_duration(total)]))
 
     # ----- Год -----
     elif tab == 'year':
@@ -531,12 +531,12 @@ def build_report(tab, rtype, counter_id, params):
             rows = []
             for q, mins in items:
                 qn = (q.month - 1) // 3 + 1
-                rows.append([q.strftime('%Y'), f'{qn} кв.', mins])
+                rows.append([q.strftime('%Y'), f'{qn} кв.', _fmt_duration(mins)])
             total = sum(m for _, m in items)
             tables.append(_table(
                 'Отчёт о простоях (сводный, по кварталам)',
-                ['Год', 'Квартал', 'Минут простоя'], rows,
-                total_row=['', 'ИТОГО', total]))
+                ['Год', 'Квартал', 'Время простоя'], rows,
+                total_row=['', 'ИТОГО', _fmt_duration(total)]))
 
     # ----- Период -----
     elif tab == 'period':
@@ -574,11 +574,11 @@ def build_report(tab, rtype, counter_id, params):
                 rows, total_row=['', 'ИТОГО', total]))
         elif rtype == 'downtime':
             items = _downtime_by(paths, from_dt, to_dt, 'day')
-            rows = [[timezone.localtime(d).strftime('%d.%m.%Y'), mins] for d, mins in items]
+            rows = [[timezone.localtime(d).strftime('%d.%m.%Y'), _fmt_duration(mins)] for d, mins in items]
             total = sum(m for _, m in items)
             tables.append(_table(
                 'Отчёт о простоях (сводный, по дням)',
-                ['Дата', 'Минут простоя'], rows, total_row=['ИТОГО', total]))
+                ['Дата', 'Время простоя'], rows, total_row=['ИТОГО', _fmt_duration(total)]))
         elif rtype == 'detail':
             if (to_dt - from_dt) > datetime.timedelta(days=2):
                 return {'ok': False,

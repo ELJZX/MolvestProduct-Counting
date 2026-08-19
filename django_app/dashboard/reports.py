@@ -244,10 +244,29 @@ def export_tables_xlsx(meta, tables):
             ws.append([])
             ws.append([table['note']])
         if columns:
-            for col_idx in range(1, len(columns) + 1):
-                letter = get_column_letter(col_idx)
-                width = max(10, min(50, (max([len(str(c)) for c in columns]) if columns else 10) + 4))
-                ws.column_dimensions[letter].width = width
+            # Ширина колонок по количеству символов в заголовке, данных и итоге
+            col_lens = [len(str(c)) for c in columns]
+            for row in table.get('rows') or []:
+                for i, cell in enumerate(row):
+                    if i < len(col_lens):
+                        col_lens[i] = max(col_lens[i], len(str(cell)))
+            tr = table.get('total_row')
+            if tr:
+                for i, cell in enumerate(tr):
+                    if i < len(col_lens):
+                        col_lens[i] = max(col_lens[i], len(str(cell)))
+            caps = []
+            for ln in col_lens:
+                width = min(70, max(8, int(ln * 1.2) + 2))
+                caps.append(width)
+            for col_idx, width in enumerate(caps, start=1):
+                ws.column_dimensions[get_column_letter(col_idx)].width = width
+            # Страховка: если текст длиннее ширины колонки — переносим на новую строку
+            for row_idx in range(1, ws.max_row + 1):
+                for col_idx, cw in enumerate(caps, start=1):
+                    cell = ws.cell(row=row_idx, column=col_idx)
+                    if cell.value is not None and len(str(cell.value)) > cw:
+                        cell.alignment = Alignment(wrap_text=True, vertical='top')
         ws.freeze_panes = 'A5'
 
     buf = io.BytesIO()
