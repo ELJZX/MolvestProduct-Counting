@@ -305,6 +305,109 @@ def export_tables_xlsx(meta, tables):
     return meta['filename_xlsx'], buf.getvalue()
 
 
+def build_day_chart_xlsx(meta, chart_data):
+    """График продукции за сутки в Excel (тестовый режим).
+
+    Сутки делятся на 4 части по 6 часов; каждая часть — отдельный график
+    (столбцы по часам с подписью количества над каждым столбиком).
+    Все 4 графика размещаются на одном листе A4 (альбомная ориентация).
+    """
+    from openpyxl import Workbook
+    from openpyxl.chart import BarChart, Reference
+    from openpyxl.chart.label import DataLabelList
+    from openpyxl.styles import Font
+    from openpyxl.worksheet.properties import PageSetupProperties
+
+    labels = chart_data.get('labels') or []                       # 'HH:MM' по минутам
+    data = (chart_data.get('datasets') or [{}])[0].get('data') or []
+    details = chart_data.get('details') or []
+
+    # Агрегация по часам: количество за каждый час суток
+    per_hour = [0] * 24
+    hour_products = {}  # час -> {код: [сумма, цвет]}
+    for lbl, val, det in zip(labels, data, details):
+        if not lbl or ':' not in str(lbl):
+            continue
+        try:
+            h = int(str(lbl).split(':')[0])
+        except ValueError:
+            continue
+        v = int(val or 0)
+        per_hour[h] += v
+        if det:
+            code = det.get('code')
+            hour_products.setdefault(h, {})
+            item = hour_products[h].setdefault(code, [0, det.get('color') or '#6c757d'])
+            item[0] += v
+
+    # Доминирующий продукт/цвет каждого часа
+    hour_colors = ['#4472C4'] * 24
+    for h in range(24):
+        prods = hour_products.get(h) or {}
+        if prods:
+            best = max(prods, key=lambda k: prods[k][0])
+            hour_colors[h] = prods[best][1] or '#4472C4'
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'График за сутки'
+
+    # Один лист A4, альбомная ориентация, вписать в одну страницу
+    ws.page_setup.orientation = 'landscape'
+    ws.page_setup.paperSize = 9  # A4
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 1
+    ws.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)
+
+    ws['A1'] = meta.get('title', 'График за сутки')
+    ws['A1'].font = Font(bold=True, size=14)
+    ws['A2'] = f'Период: {meta.get("period_label", "")} · Счетчик: {meta.get("counter", "")}'
+    ws['A2'].font = Font(bold=True, size=11)
+
+    sections = [
+        ('00:00 – 06:00', range(0, 6)),
+        ('06:00 – 12:00', range(6, 12)),
+        ('12:00 – 18:00', range(12, 18)),
+        ('18:00 – 24:00', range(18, 24)),
+    ]
+
+    # Данные по секциям записываем в служебные колонки (M..T), графики — поверх
+    DATA_TOP = 1
+    for si, (_title, hrs) in enumerate(sections):
+        col = 13 + si * 2  # M, O, Q, S
+        for j, h in enumerate(hrs):
+            ws.cell(row=DATA_TOP + j, column=col, value=f'{h:02d}:00')
+            ws.cell(row=DATA_TOP + j, column=col + 1, value=per_hour[h])
+
+    anchors = [
+        ('A4', 0), ('H4', 1),
+        ('A22', 2), ('H22', 3),
+    ]
+    for (anchor, si) in anchors:
+        _title, hrs = sections[si]
+        col = 13 + si * 2
+        chart = BarChart()
+        chart.type = 'col'
+        chart.title = _title
+        chart.width = 12.5
+        chart.height = 9.5
+        data_ref = Reference(ws, min_col=col + 1, min_row=DATA_TOP, max_row=DATA_TOP + 5)
+        cats_ref = Reference(ws, min_col=col, min_row=DATA_TOP, max_row=DATA_TOP + 5)
+        chart.add_data(data_ref, titles_from_data=False)
+        chart.set_categories(cats_ref)
+        # Подписи количества над каждым столбиком
+        chart.dataLabels = DataLabelList()
+        chart.dataLabels.showVal = True
+        chart.dataLabels.numFmt = '0'
+        chart.dataLabels.dLblPos = 'outEnd'
+        chart.legend = None
+        ws.add_chart(chart, anchor)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return meta.get('filename_xlsx', 'chart_day.xlsx'), buf.getvalue()
+
+
 def export_tables_csv(meta, tables):
     """Каждая таблица отчёта — блок строк в одном CSV."""
     buf = io.StringIO()

@@ -18,8 +18,9 @@ from .models import (
     Counter, Line, Product, ProductAssignment, ProductionRecord, Shop, SystemConfig,
 )
 from .reports import (
-    build_downtime_csv, build_downtime_xlsx, build_comparison_xlsx,
-    build_comparison_csv, export_tables_csv, export_tables_xlsx,
+    build_day_chart_xlsx, build_downtime_csv, build_downtime_xlsx,
+    build_comparison_xlsx, build_comparison_csv, export_tables_csv,
+    export_tables_xlsx,
 )
 
 
@@ -321,9 +322,6 @@ def reports_export(request):
     if not result.get('ok'):
         messages.error(request, result.get('error', 'Не удалось сформировать отчёт.'))
         return redirect('reports')
-    if not result.get('tables'):
-        messages.error(request, 'В этом отчёте только график — таблиц для выгрузки нет.')
-        return redirect('reports')
 
     stamp = timezone.localtime().strftime('%Y-%m-%d_%H-%M')
     tab_label = {
@@ -340,6 +338,25 @@ def reports_export(request):
         'filename_xlsx': f'report_{request.GET.get("tab", "period")}_{request.GET.get("type", "total")}_{stamp}.xlsx',
         'filename_csv': f'report_{request.GET.get("tab", "period")}_{request.GET.get("type", "total")}_{stamp}.csv',
     }
+
+    # График за сутки — выгрузка графическим Excel-файлом (4 части по 6 часов, A4)
+    if (not result.get('tables')) and result.get('chart') and tab == 'day' and rtype == 'chart':
+        if fmt != 'xlsx':
+            messages.error(request, 'Для графика доступна только выгрузка в XLSX.')
+            return redirect('reports')
+        meta['filename_xlsx'] = f'chart_{request.GET.get("date", "day")}_{stamp}.xlsx'
+        filename, payload = build_day_chart_xlsx(meta, result['chart'])
+        response = HttpResponse(
+            payload,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    if not result.get('tables'):
+        messages.error(request, 'В этом отчёте только график — таблиц для выгрузки нет.')
+        return redirect('reports')
+
     if fmt == 'csv':
         filename, payload = export_tables_csv(meta, result['tables'])
         content_type = 'text/csv; charset=utf-8'
