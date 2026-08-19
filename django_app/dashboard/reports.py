@@ -351,6 +351,9 @@ def build_day_chart_xlsx(meta, chart_data):
     wb = Workbook()
     ws = wb.active
     ws.title = 'График за сутки'
+    # Данные графика — на отдельном скрытом листе (пользователю не видны)
+    ws_data = wb.create_sheet('Данные')
+    ws_data.sheet_state = 'hidden'
 
     # Один лист A4, альбомная ориентация, вписать в одну страницу
     ws.page_setup.orientation = 'landscape'
@@ -371,13 +374,12 @@ def build_day_chart_xlsx(meta, chart_data):
         ('18:00 – 24:00', range(18, 24)),
     ]
 
-    # Данные по секциям записываем в служебные колонки (M..T), графики — поверх
-    DATA_TOP = 1
+    # Данные секций на скрытом листе: часы/значения в колонках A..H (строки 1-6)
     for si, (_title, hrs) in enumerate(sections):
-        col = 13 + si * 2  # M, O, Q, S
+        col = 1 + si * 2  # A, C, E, G
         for j, h in enumerate(hrs):
-            ws.cell(row=DATA_TOP + j, column=col, value=f'{h:02d}:00')
-            ws.cell(row=DATA_TOP + j, column=col + 1, value=per_hour[h])
+            ws_data.cell(row=1 + j, column=col, value=f'{h:02d}:00')
+            ws_data.cell(row=1 + j, column=col + 1, value=per_hour[h])
 
     anchors = [
         ('A4', 0), ('H4', 1),
@@ -385,14 +387,14 @@ def build_day_chart_xlsx(meta, chart_data):
     ]
     for (anchor, si) in anchors:
         _title, hrs = sections[si]
-        col = 13 + si * 2
+        col = 1 + si * 2
         chart = BarChart()
         chart.type = 'col'
         chart.title = _title
         chart.width = 12.5
         chart.height = 9.5
-        data_ref = Reference(ws, min_col=col + 1, min_row=DATA_TOP, max_row=DATA_TOP + 5)
-        cats_ref = Reference(ws, min_col=col, min_row=DATA_TOP, max_row=DATA_TOP + 5)
+        data_ref = Reference(ws_data, min_col=col + 1, min_row=1, max_row=6)
+        cats_ref = Reference(ws_data, min_col=col, min_row=1, max_row=6)
         chart.add_data(data_ref, titles_from_data=False)
         chart.set_categories(cats_ref)
         # Подписи количества над каждым столбиком
