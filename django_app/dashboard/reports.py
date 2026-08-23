@@ -439,14 +439,14 @@ def _write_day_chart_sheet(wb, ws, meta, chart_data, data_sheet_name='Данны
         chart.x_axis.tickMarkSkip = 5
         chart.y_axis.delete = False
         chart.y_axis.axPos = 'l'
-        # Подписи количества над каждым столбиком — мелким шрифтом (8 pt)
+        # Подписи количества над каждым столбиком — мелким шрифтом (7 pt)
         chart.dataLabels = DataLabelList()
         chart.dataLabels.showVal = True
         chart.dataLabels.numFmt = '0'
         chart.dataLabels.dLblPos = 'outEnd'
         tx_pr = RichText()
         tx_pr.p = [Paragraph(pPr=ParagraphProperties(
-            defRPr=CharacterProperties(sz=800)))]
+            defRPr=CharacterProperties(sz=700)))]
         chart.dataLabels.txPr = tx_pr
         # Цвет каждого столбика = цвет продукта за эту минуту
         series = chart.series[0]

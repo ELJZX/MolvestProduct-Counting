@@ -466,6 +466,16 @@ table.table {
 }
 .report-types .form-check-inline { margin-right: 1rem; }
 .report-types .form-check-label { font-size: .9rem; }
+/* Радио-тип отчёта: input внутри label (нет for/id — страница не «прыгает»
+   к первому блоку при клике на текст) */
+.report-types .report-type-label {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  cursor: pointer;
+  margin-bottom: 0;
+}
+.report-types .report-type-label .form-check-input { margin-left: 0; }
 /* Таблицы отчётов на весь экран */
 .report-tables .report-table-block {
   border-bottom: 1px solid #e9ecef;
