@@ -438,12 +438,11 @@ def build_report(tab, rtype, counter_id, params):
         )
 
         report_meta = [
-            ('Счетчик №:', code),
+            ('Счетчик:', code),
             ('Линия:', code),
             ('Смена:', f'Смена {shift_no}'),
             ('Период:', f'{timezone.localtime(from_dt):%d.%m.%Y %H:%M} – '
                         f'{timezone.localtime(to_dt):%d.%m.%Y %H:%M}'),
-            ('Идентификатор отчета:', identifier or '—'),
         ]
 
         if rtype == 'total':
@@ -506,11 +505,10 @@ def build_report(tab, rtype, counter_id, params):
             code, tab, rtype, from_dt, to_dt, params.get('report_id'),
         )
         report_meta = [
-            ('Счетчик №:', code),
+            ('Счетчик:', code),
             ('Линия:', code),
             ('Период:', f'{timezone.localtime(from_dt):%d.%m.%Y %H:%M} – '
                         f'{timezone.localtime(to_dt):%d.%m.%Y %H:%M}'),
-            ('Идентификатор отчета:', identifier or '—'),
         ]
 
         if rtype == 'total':

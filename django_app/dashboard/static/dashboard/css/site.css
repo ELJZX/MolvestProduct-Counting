@@ -302,9 +302,37 @@ table.table {
   font-size: .9rem;
   line-height: 1;
   color: #0d2b52;
+  user-select: none;
 }
+.zoom-btn:focus { outline: none; box-shadow: none; }
 .zoom-btn:hover { background: #e9ecef; }
 .zoom-btn[data-zoom="reset"] { font-size: .82rem; }
+/* Переключатель «Отображать график простоя» (галочка + красно-чёрный квадрат) */
+.down-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  cursor: pointer;
+  user-select: none;
+  font-size: .88rem;
+  color: #495057;
+  white-space: nowrap;
+}
+.down-toggle input {
+  width: 1.15rem;
+  height: 1.15rem;
+  cursor: pointer;
+  accent-color: #dc3545;
+}
+.down-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  display: inline-block;
+  flex: none;
+  background: repeating-linear-gradient(135deg, #dc3545 0 4px, rgba(0, 0, 0, .4) 4px 6px);
+  border: 1px solid rgba(0, 0, 0, .15);
+}
 .zoom-label {
   font-size: .8rem;
   color: #6c757d;

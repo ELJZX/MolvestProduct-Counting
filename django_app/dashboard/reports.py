@@ -107,63 +107,78 @@ def _fmt_cell(v):
     return str(v) if v is not None else ''
 
 
-def export_tables_xlsx(meta, tables):
-    """Каждая таблица отчёта — отдельный лист Excel.
+def _write_report_sheet(ws, meta, table, write_meta=True):
+    """Заполняет лист Excel одной таблицей отчёта.
 
     Формат по образцу: объединённый заголовок отчёта по ширине листа,
     «Сформирован:», шапка отчёта (мета-строки, каждая объединена по ширине),
-    шапка таблицы (жирная, по центру, на тёмно-синем фоне), данные, итог.
-    Ширина колонок — по количеству символов.
+    строка по центру (если есть), шапка таблицы (жирная, по центру,
+    на тёмно-синем фоне; для колонок «Код продукта | Заводской код | …» —
+    двухстрочная: «Код:» объединено по 2 колонкам + «Продукта | Заводской»),
+    данные, итог, примечание. Ширина колонок — по количеству символов.
     """
-    from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font
     from openpyxl.utils import get_column_letter
     header_font, header_fill, _ = _xlsx_style()
 
-    def merge_row(ws, row_idx, ncols):
+    def merge_row(row_idx, ncols):
         if ncols > 1:
             ws.merge_cells(start_row=row_idx, start_column=1,
                            end_row=row_idx, end_column=ncols)
 
-    wb = Workbook()
-    wb.remove(wb.active)
-    for idx, table in enumerate(tables, start=1):
-        ws = wb.create_sheet(f'Лист{idx}')
-        columns = table.get('columns') or []
-        ncols = max(len(columns), 1)
-        last_col = get_column_letter(ncols)
+    columns = table.get('columns') or []
+    ncols = max(len(columns), 1)
 
-        # 1) Заголовок отчёта — объединён по ширине, по центру
-        ws.append([meta.get('title', 'Отчёт')])
-        ws['A1'].font = Font(bold=True, size=14)
-        ws['A1'].alignment = Alignment(horizontal='center', vertical='top', wrap_text=True)
-        ws.row_dimensions[1].height = 22.5
-        merge_row(ws, 1, ncols)
+    # 1) Заголовок отчёта — объединён по ширине, по центру
+    ws.append([meta.get('title', 'Отчёт')])
+    ws['A1'].font = Font(bold=True, size=14)
+    ws['A1'].alignment = Alignment(horizontal='center', vertical='top', wrap_text=True)
+    ws.row_dimensions[1].height = 22.5
+    merge_row(1, ncols)
 
-        # 2) Сформирован
-        ws.append([f'Сформирован: {meta.get("generated_at", "")}'])
-        ws[ws.max_row][0].alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
-        merge_row(ws, ws.max_row, ncols)
+    # 2) Сформирован
+    ws.append([f'Сформирован: {meta.get("generated_at", "")}'])
+    ws[ws.max_row][0].alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+    merge_row(ws.max_row, ncols)
 
-        # 3) Шапка отчёта (мета-строки) — только на первом листе
-        if idx == 1 and meta.get('report_meta'):
-            for label, value in meta['report_meta']:
-                ws.append([f'{label} {value}'])
-                cell = ws[ws.max_row][0]
-                cell.font = Font(bold=True, size=11)
-                cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
-                merge_row(ws, ws.max_row, ncols)
+    # 3) Шапка отчёта (мета-строки)
+    if write_meta and meta.get('report_meta'):
+        for label, value in meta['report_meta']:
+            ws.append([f'{label} {value}'])
+            cell = ws[ws.max_row][0]
+            cell.font = Font(bold=True, size=11)
+            cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+            merge_row(ws.max_row, ncols)
 
-        # 4) Строка по центру (например «Смена 1»)
-        if table.get('title_row'):
-            ws.append([table['title_row']])
-            ws[ws.max_row][0].font = Font(bold=True, size=13)
-            ws[ws.max_row][0].alignment = Alignment(horizontal='center')
-            merge_row(ws, ws.max_row, ncols)
+    # 4) Строка по центру (например «Смена 1»)
+    if table.get('title_row'):
+        ws.append([table['title_row']])
+        ws[ws.max_row][0].font = Font(bold=True, size=13)
+        ws[ws.max_row][0].alignment = Alignment(horizontal='center')
+        merge_row(ws.max_row, ncols)
 
-        # 6) Шапка таблицы — жирная белая на тёмно-синем, по центру
-        header_row = ws.max_row
-        if columns:
+    # 6) Шапка таблицы — жирная белая на тёмно-синем, по центру
+    header_row = ws.max_row
+    if columns:
+        two_row = (len(columns) >= 2
+                   and str(columns[0]).startswith('Код')
+                   and str(columns[1]).startswith('Заводской'))
+        if two_row:
+            ws.append(['Код:', ''] + list(columns[2:]))
+            ws.merge_cells(start_row=ws.max_row, start_column=1,
+                           end_row=ws.max_row, end_column=2)
+            header_row = ws.max_row
+            for cell in ws[header_row]:
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+            ws.append(['Продукта', 'Заводской'] + [''] * max(0, len(columns) - 2))
+            header_row = ws.max_row
+            for cell in ws[header_row]:
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+        else:
             ws.append(columns)
             header_row = ws.max_row
             for cell in ws[header_row]:
@@ -171,47 +186,56 @@ def export_tables_xlsx(meta, tables):
                 cell.fill = header_fill
                 cell.alignment = Alignment(horizontal='center', vertical='center')
 
-        # 7) Данные
+    # 7) Данные
+    for row in table.get('rows') or []:
+        ws.append([_fmt_cell(v) for v in row])
+
+    # 8) Итог — жирный
+    if table.get('total_row'):
+        ws.append([_fmt_cell(v) for v in table['total_row']])
+        for cell in ws[ws.max_row]:
+            cell.font = Font(bold=True)
+
+    if table.get('note'):
+        ws.append([])
+        ws.append([table['note']])
+
+    if columns:
+        # Ширина колонок по количеству символов в заголовке, данных и итоге
+        col_lens = [len(str(c)) for c in columns]
         for row in table.get('rows') or []:
-            ws.append([_fmt_cell(v) for v in row])
+            for i, cell in enumerate(row):
+                if i < len(col_lens):
+                    col_lens[i] = max(col_lens[i], len(str(cell)))
+        tr = table.get('total_row')
+        if tr:
+            for i, cell in enumerate(tr):
+                if i < len(col_lens):
+                    col_lens[i] = max(col_lens[i], len(str(cell)))
+        caps = []
+        for ln in col_lens:
+            width = min(70, max(8, int(ln * 1.2) + 2))
+            caps.append(width)
+        for col_idx, width in enumerate(caps, start=1):
+            ws.column_dimensions[get_column_letter(col_idx)].width = width
+        # Страховка: если текст длиннее ширины колонки — перенос на новую строку
+        for row_idx in range(1, ws.max_row + 1):
+            for col_idx, cw in enumerate(caps, start=1):
+                cell = ws.cell(row=row_idx, column=col_idx)
+                if cell.value is not None and len(str(cell.value)) > cw:
+                    cell.alignment = Alignment(wrap_text=True, vertical='top')
 
-        # 8) Итог — жирный
-        if table.get('total_row'):
-            ws.append([_fmt_cell(v) for v in table['total_row']])
-            for cell in ws[ws.max_row]:
-                cell.font = Font(bold=True)
+    ws.freeze_panes = f'A{header_row + 1}'
 
-        if table.get('note'):
-            ws.append([])
-            ws.append([table['note']])
 
-        if columns:
-            # Ширина колонок по количеству символов в заголовке, данных и итоге
-            col_lens = [len(str(c)) for c in columns]
-            for row in table.get('rows') or []:
-                for i, cell in enumerate(row):
-                    if i < len(col_lens):
-                        col_lens[i] = max(col_lens[i], len(str(cell)))
-            tr = table.get('total_row')
-            if tr:
-                for i, cell in enumerate(tr):
-                    if i < len(col_lens):
-                        col_lens[i] = max(col_lens[i], len(str(cell)))
-            caps = []
-            for ln in col_lens:
-                width = min(70, max(8, int(ln * 1.2) + 2))
-                caps.append(width)
-            for col_idx, width in enumerate(caps, start=1):
-                ws.column_dimensions[get_column_letter(col_idx)].width = width
-            # Страховка: если текст длиннее ширины колонки — перенос на новую строку
-            for row_idx in range(1, ws.max_row + 1):
-                for col_idx, cw in enumerate(caps, start=1):
-                    cell = ws.cell(row=row_idx, column=col_idx)
-                    if cell.value is not None and len(str(cell.value)) > cw:
-                        cell.alignment = Alignment(wrap_text=True, vertical='top')
-
-        ws.freeze_panes = f'A{header_row + 1}'
-
+def export_tables_xlsx(meta, tables):
+    """Каждая таблица отчёта — отдельный лист Excel (мета-строки — на первом)."""
+    from openpyxl import Workbook
+    wb = Workbook()
+    wb.remove(wb.active)
+    for idx, table in enumerate(tables, start=1):
+        ws = wb.create_sheet(f'Лист{idx}')
+        _write_report_sheet(ws, meta, table, write_meta=(idx == 1))
     buf = io.BytesIO()
     wb.save(buf)
     return meta['filename_xlsx'], buf.getvalue()
@@ -345,3 +369,154 @@ def export_tables_csv(meta, tables):
             writer.writerow([_fmt_cell(v) for v in table['total_row']])
         writer.writerow([])
     return meta['filename_csv'], buf.getvalue().encode('utf-8-sig')
+
+
+# ---------------------------------------------------------------------------
+# Пакетный экспорт нескольких отчётов (сравнение) — один файл, лист на отчёт
+# ---------------------------------------------------------------------------
+
+def export_reports_bundle_xlsx(items):
+    """Несколько отчётов — один Excel-файл, отдельный лист на каждый отчёт.
+
+    items: список {'meta': {...}, 'tables': [...]}. На каждом листе — свой
+    заголовок, «Сформирован», мета-строки отчёта и все его таблицы
+    последовательно (пустая строка между таблицами).
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font
+    from openpyxl.utils import get_column_letter
+    header_font, header_fill, _ = _xlsx_style()
+
+    wb = Workbook()
+    wb.remove(wb.active)
+    for idx, item in enumerate(items, start=1):
+        ws = wb.create_sheet(f'Отчет {idx}')
+        meta = item.get('meta') or {}
+        tables = item.get('tables') or []
+        ncols = max([len((t.get('columns') or [])) for t in tables] or [1])
+
+        def merge_row(row_idx):
+            if ncols > 1:
+                ws.merge_cells(start_row=row_idx, start_column=1,
+                               end_row=row_idx, end_column=ncols)
+
+        # Заголовок отчёта + «Сформирован» + мета-строки — в начале листа
+        ws.append([meta.get('title', 'Отчёт')])
+        ws['A1'].font = Font(bold=True, size=14)
+        ws['A1'].alignment = Alignment(horizontal='center', vertical='top', wrap_text=True)
+        ws.row_dimensions[1].height = 22.5
+        merge_row(1)
+
+        ws.append([f'Сформирован: {meta.get("generated_at", "")}'])
+        ws[ws.max_row][0].alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+        merge_row(ws.max_row)
+
+        if meta.get('report_meta'):
+            for label, value in meta['report_meta']:
+                ws.append([f'{label} {value}'])
+                cell = ws[ws.max_row][0]
+                cell.font = Font(bold=True, size=11)
+                cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+                merge_row(ws.max_row)
+
+        header_row = None
+        for table in tables:
+            if table.get('title_row'):
+                ws.append([table['title_row']])
+                ws[ws.max_row][0].font = Font(bold=True, size=13)
+                ws[ws.max_row][0].alignment = Alignment(horizontal='center')
+                merge_row(ws.max_row)
+            columns = table.get('columns') or []
+            if columns:
+                two_row = (len(columns) >= 2
+                           and str(columns[0]).startswith('Код')
+                           and str(columns[1]).startswith('Заводской'))
+                if two_row:
+                    ws.append(['Код:', ''] + list(columns[2:]))
+                    ws.merge_cells(start_row=ws.max_row, start_column=1,
+                                   end_row=ws.max_row, end_column=2)
+                    if header_row is None:
+                        header_row = ws.max_row
+                    for cell in ws[ws.max_row]:
+                        cell.font = header_font
+                        cell.fill = header_fill
+                        cell.alignment = Alignment(horizontal='center', vertical='center')
+                    ws.append(['Продукта', 'Заводской'] + [''] * max(0, len(columns) - 2))
+                    if header_row is None:
+                        header_row = ws.max_row
+                    for cell in ws[ws.max_row]:
+                        cell.font = header_font
+                        cell.fill = header_fill
+                        cell.alignment = Alignment(horizontal='center', vertical='center')
+                else:
+                    ws.append(columns)
+                    if header_row is None:
+                        header_row = ws.max_row
+                    for cell in ws[ws.max_row]:
+                        cell.font = header_font
+                        cell.fill = header_fill
+                        cell.alignment = Alignment(horizontal='center', vertical='center')
+            for row in table.get('rows') or []:
+                ws.append([_fmt_cell(v) for v in row])
+            if table.get('total_row'):
+                ws.append([_fmt_cell(v) for v in table['total_row']])
+                for cell in ws[ws.max_row]:
+                    cell.font = Font(bold=True)
+            if table.get('note'):
+                ws.append([])
+                ws.append([table['note']])
+            ws.append([])  # разделитель между таблицами
+
+        # Ширина колонок — по символам (максимум по всем таблицам листа)
+        caps = {}
+        for table in tables:
+            columns = table.get('columns') or []
+            if not columns:
+                continue
+            col_lens = [len(str(c)) for c in columns]
+            for row in table.get('rows') or []:
+                for i, cell in enumerate(row):
+                    if i < len(col_lens):
+                        col_lens[i] = max(col_lens[i], len(str(cell)))
+            tr = table.get('total_row')
+            if tr:
+                for i, cell in enumerate(tr):
+                    if i < len(col_lens):
+                        col_lens[i] = max(col_lens[i], len(str(cell)))
+            for i, ln in enumerate(col_lens, start=1):
+                caps[i] = max(caps.get(i, 0), min(70, max(8, int(ln * 1.2) + 2)))
+        for col_idx, width in caps.items():
+            ws.column_dimensions[get_column_letter(col_idx)].width = width
+        if header_row:
+            ws.freeze_panes = f'A{header_row + 1}'
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return 'reports_comparison.xlsx', buf.getvalue()
+
+
+def export_reports_bundle_csv(items):
+    """Несколько отчётов — один CSV: блоки отчётов разделены пустой строкой."""
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=';')
+    for item in items:
+        meta = item.get('meta') or {}
+        writer.writerow([meta.get('title', 'Отчёт')])
+        writer.writerow([f'Сформирован: {meta.get("generated_at", "")}'])
+        if meta.get('report_meta'):
+            for label, value in meta['report_meta']:
+                writer.writerow([f'{label} {value}'])
+        writer.writerow([])
+        for table in item.get('tables') or []:
+            if table.get('title_row'):
+                writer.writerow([table['title_row']])
+            columns = table.get('columns') or []
+            if columns:
+                writer.writerow(columns)
+            for row in table.get('rows') or []:
+                writer.writerow([_fmt_cell(v) for v in row])
+            if table.get('total_row'):
+                writer.writerow([_fmt_cell(v) for v in table['total_row']])
+            writer.writerow([])
+        writer.writerow([])
+    return 'reports_comparison.csv', buf.getvalue().encode('utf-8-sig')

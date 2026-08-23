@@ -40,9 +40,9 @@
     panel.innerHTML =
       '<div class="zoom-top">' +
         '<div class="zoom-btns">' +
-          '<button type="button" class="zoom-btn" data-zoom="out" title="Уменьшить масштаб (больше времени)">−</button>' +
-          '<button type="button" class="zoom-btn" data-zoom="reset" title="Показать весь период">Весь период</button>' +
-          '<button type="button" class="zoom-btn" data-zoom="in" title="Увеличить масштаб (меньше времени)">+</button>' +
+          '<button type="button" class="zoom-btn" data-zoom="out" title="Уменьшить масштаб (больше времени)" tabindex="-1">−</button>' +
+          '<button type="button" class="zoom-btn" data-zoom="reset" title="Показать весь период" tabindex="-1">Весь период</button>' +
+          '<button type="button" class="zoom-btn" data-zoom="in" title="Увеличить масштаб (меньше времени)" tabindex="-1">+</button>' +
         '</div>' +
         '<span class="zoom-label" data-role="label">весь период</span>' +
       '</div>' +
@@ -145,6 +145,8 @@
     // ---- кнопки ----
     panel.querySelectorAll('.zoom-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
+        // Кнопка не должна удерживать фокус/курсор после нажатия
+        btn.blur();
         var kind = btn.dataset.zoom;
         if (kind === 'reset') {
           reset();

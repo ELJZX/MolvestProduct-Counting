@@ -285,13 +285,19 @@
     // данные простоя для видимого окна
     const downData = new Array(slice.length).fill(0);
     downTexts = {};
-    downColumns.forEach((c) => {
-      const local = c.idx - w.min;
-      if (local >= 0 && local < slice.length) {
-        downData[local] = maxCount;
-        downTexts[local] = c.text;
-      }
-    });
+    const downOn = !document.getElementById('downToggle') ||
+      document.getElementById('downToggle').checked;
+    if (downOn) {
+      downColumns.forEach((c) => {
+        const local = c.idx - w.min;
+        if (local >= 0 && local < slice.length) {
+          downData[local] = maxCount;
+          downTexts[local] = c.text;
+        }
+      });
+    }
+    // Даже при выключенном простоях датасет остаётся (нули) — ширина столбцов
+    // продукции не меняется (нет перерасчёта раскладки)
 
     chart.data.labels = slice.map((s) => s.minute);
     chart.data.datasets[0].data = slice.map((s) => s.count);
@@ -345,14 +351,8 @@
             maintainAspectRatio: false,
             animation: false,
             plugins: {
-              legend: {
-                display: true,
-                position: 'top',
-                labels: {
-                  boxWidth: 14,
-                  filter: (item) => item.datasetIndex !== 0, // «Продукция» — отдельный индикатор
-                },
-              },
+              // Легенда скрыта: вместо неё — чекбокс «Отображать график простоя»
+              legend: { display: false },
               tooltip: { enabled: false, external: tooltipHandler },
               // 3D-столбцы (только для продукции; простой — плоские полосы)
               molvest3d: { enabled: true, depth: 9 },
@@ -424,6 +424,15 @@
   }
 
   setInterval(loadChart, 60000);
+
+  // Переключатель «Отображать график простоя» — перерисовка без изменения
+  // ширины столбцов (датасет простоя остаётся в раскладке)
+  const downToggle = document.getElementById('downToggle');
+  if (downToggle) {
+    downToggle.addEventListener('change', () => {
+      if (chart) renderVisible();
+    });
+  }
 
   loadChart();
   connectEvents();

@@ -21,3 +21,9 @@ def duration(value):
         return _fmt_duration(int(value or 0))
     except (TypeError, ValueError):
         return '—'
+
+
+@register.filter
+def startswith(value, arg):
+    """Проверка начала строки: {{ value|startswith:'Код' }}."""
+    return str(value or '').startswith(str(arg))

@@ -2,108 +2,114 @@
 {% block title %}Отчёты — Молвест.Учет.Продукции{% endblock %}
 {% block content %}
 {% load static %}
-<div class="reports-page">
-  {# ---- Левая колонка: параметры отчёта ---- #}
-  <aside class="reports-left">
-    <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
-      <div>
-        <h1 class="h3 mb-0"><i class="bi bi-bar-chart-line me-2"></i>Отчёты</h1>
-      </div>
-      <div class="d-flex gap-2 flex-wrap align-items-center">
-        {% if is_admin %}
-        <form method="post" action="{% url 'reports_toggle_source' %}" class="d-inline" title="Переключить источник данных для отчётов">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-sm {% if data_source_dbf %}btn-outline-warning{% else %}btn-outline-primary{% endif %}">
-            <i class="bi bi-arrow-left-right me-1"></i>Источник: {{ data_source_label }}
-          </button>
-        </form>
-        {% else %}
-        <span class="text-muted small">Источник: <span class="fw-semibold">{{ data_source_label }}</span></span>
-        {% endif %}
-        <div class="btn-group">
-          <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" id="btnExportToggle" disabled>
-            <i class="bi bi-download me-1"></i>Выгрузить отчёт
-          </button>
-          <ul class="dropdown-menu dropdown-menu-end">
-            <li><a class="dropdown-item" id="btnExportXlsx" href="#"><i class="bi bi-file-earmark-excel me-1"></i>Excel (XLSX)</a></li>
-            <li><a class="dropdown-item" id="btnExportCsv" href="#"><i class="bi bi-filetype-csv me-1"></i>CSV</a></li>
-          </ul>
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+  <div>
+    <h1 class="h3 mb-0"><i class="bi bi-bar-chart-line me-2"></i>Отчёты</h1>
+  </div>
+  <div class="d-flex gap-2 flex-wrap align-items-center">
+    {% if is_admin %}
+    <form method="post" action="{% url 'reports_toggle_source' %}" class="d-inline" title="Переключить источник данных для отчётов">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-sm {% if data_source_dbf %}btn-outline-warning{% else %}btn-outline-primary{% endif %}">
+        <i class="bi bi-arrow-left-right me-1"></i>Источник: {{ data_source_label }}
+      </button>
+    </form>
+    {% else %}
+    <span class="text-muted small">Источник: <span class="fw-semibold">{{ data_source_label }}</span></span>
+    {% endif %}
+    <div class="btn-group">
+      <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" id="btnExportToggle">
+        <i class="bi bi-download me-1"></i>Выгрузить отчёты
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><a class="dropdown-item" id="btnExportXlsx" href="#"><i class="bi bi-file-earmark-excel me-1"></i>Excel (XLSX) — все отчёты</a></li>
+        <li><a class="dropdown-item" id="btnExportCsv" href="#"><i class="bi bi-filetype-csv me-1"></i>CSV — все отчёты</a></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div id="reportBlocks" class="d-flex flex-column gap-3"></div>
+
+<button type="button" id="btnAddReport" class="btn btn-lg btn-outline-primary w-100 mt-3">
+  <i class="bi bi-plus-lg me-1"></i>Добавить отчет для сравнения
+</button>
+<div id="addReportError" class="text-danger fw-semibold mt-2 d-none"></div>
+
+{# ---- Шаблон одного блока отчёта (клонируется на странице) ---- #}
+<template id="reportBlockTemplate">
+  <div class="card shadow-sm report-block">
+    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span><i class="bi bi-file-earmark-text me-1"></i>Отчет <span class="rb-index"></span></span>
+      <button type="button" class="btn btn-sm btn-outline-danger rb-remove" title="Удалить этот отчёт">
+        <i class="bi bi-x-lg"></i> Удалить
+      </button>
+    </div>
+    <div class="card-body">
+      <div class="row g-2 align-items-end mb-3">
+        <div class="col-md-6 col-xl-4">
+          <label class="form-label mb-1">Счетчик:</label>
+          <select class="form-select rb-counter">
+            {% for c in counter_options %}
+              <option value="{{ c.id }}">{{ c.label }}</option>
+            {% endfor %}
+          </select>
         </div>
       </div>
-    </div>
 
-    <div class="card shadow-sm">
-      <div class="card-body">
-        <div class="row g-2 align-items-end mb-3">
-          <div class="col-12">
-            <label class="form-label mb-1" for="counterSelect">Счетчик:</label>
-            <select id="counterSelect" class="form-select">
-              {% for c in counter_options %}
-                <option value="{{ c.id }}">{{ c.label }}</option>
-              {% endfor %}
-            </select>
+      <ul class="nav nav-pills nav-tabs-custom mb-3 rb-tabs" role="tablist">
+        <li class="nav-item"><button class="nav-link active rb-tab" data-tab="shift" type="button">Смена</button></li>
+        <li class="nav-item"><button class="nav-link rb-tab" data-tab="day" type="button">Сутки</button></li>
+        <li class="nav-item"><button class="nav-link rb-tab" data-tab="month" type="button">Месяц</button></li>
+        <li class="nav-item"><button class="nav-link rb-tab" data-tab="quarter" type="button">Квартал</button></li>
+        <li class="nav-item"><button class="nav-link rb-tab" data-tab="year" type="button">Год</button></li>
+        <li class="nav-item"><button class="nav-link rb-tab" data-tab="period" type="button">Период</button></li>
+      </ul>
+
+      <div class="rb-panels">
+        {% include 'dashboard/_report_panel.html' with tab='shift' types='total|detail|downtime' type_labels='Отчет итоговый|Отчет подробный|Отчет о простоях (подробный)' %}
+        {% include 'dashboard/_report_panel.html' with tab='day' types='total|detail_shifts|chart|downtime' type_labels='Отчет итоговый|Отчет подробный (с раскладкой по сменам)|График продукции|Отчет о простоях (подробный)' %}
+        {% include 'dashboard/_report_panel.html' with tab='month' types='by_shift|total_days|chart|downtime|gross' type_labels='Отчет по смене|Отчет итоговый (с промежуточными значениями по дням)|График продукции|Отчет о простоях (сводный)|Отчет валовый по всем сменам' %}
+        {% include 'dashboard/_report_panel.html' with tab='quarter' types='total_months|gross|by_shift|downtime' type_labels='Отчет итоговый (с промежуточными значениями за месяцы)|Отчет валовый по всем сменам|Отчет по смене|Отчет о простоях (сводный)' %}
+        {% include 'dashboard/_report_panel.html' with tab='year' types='total_quarters|gross|by_shift|downtime' type_labels='Отчет итоговый (с промежуточными значениями за кварталы)|Отчет валовый по всем сменам|Отчет по смене|Отчет о простоях (сводный)' %}
+        {% include 'dashboard/_report_panel.html' with tab='period' types='total_year|gross|by_shift|downtime|detail' type_labels='Отчет итоговый (в пределах года)|Отчет валовый по всем сменам|Отчет по смене|Отчет о простоях (сводный)|Отчет подробный за период (не более 2х суток)' %}
+      </div>
+
+      <div class="d-flex gap-2 mt-3 align-items-center">
+        <button type="button" class="btn btn-primary px-4 rb-build">
+          <i class="bi bi-file-earmark-text me-1"></i>Формировать
+        </button>
+        <span class="rb-status text-muted small"></span>
+      </div>
+
+      <div class="rb-result mt-3 d-none">
+        <div class="rb-empty text-muted py-3 text-center d-none">
+          <i class="bi bi-inbox d-block mb-2" style="font-size:1.6rem"></i>
+          Нет данных за указанный период.
+        </div>
+        <div class="rb-tables"></div>
+        <div class="card shadow-sm rb-chart-card d-none">
+          <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span><i class="bi bi-graph-up me-1"></i>График продукции</span>
+            <label class="down-toggle" title="Показать/скрыть столбики простоев">
+              <input type="checkbox" class="rb-down-input" checked>
+              <span class="down-swatch"></span>
+              <span>Отображать график простоя</span>
+            </label>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap"><canvas class="rb-canvas"></canvas></div>
+            <div class="rb-zoom"></div>
           </div>
         </div>
-
-        <ul class="nav nav-pills nav-tabs-custom mb-3" id="reportTabs" role="tablist">
-          <li class="nav-item"><button class="nav-link active" data-tab="shift" type="button">Смена</button></li>
-          <li class="nav-item"><button class="nav-link" data-tab="day" type="button">Сутки</button></li>
-          <li class="nav-item"><button class="nav-link" data-tab="month" type="button">Месяц</button></li>
-          <li class="nav-item"><button class="nav-link" data-tab="quarter" type="button">Квартал</button></li>
-          <li class="nav-item"><button class="nav-link" data-tab="year" type="button">Год</button></li>
-          <li class="nav-item"><button class="nav-link" data-tab="period" type="button">Период</button></li>
-        </ul>
-
-        <div id="tabPanels">
-          {% include 'dashboard/_report_panel.html' with tab='shift' types='total|detail|downtime' type_labels='Отчет итоговый|Отчет подробный|Отчет о простоях (подробный)' %}
-          {% include 'dashboard/_report_panel.html' with tab='day' types='total|detail_shifts|chart|downtime' type_labels='Отчет итоговый|Отчет подробный (с раскладкой по сменам)|График продукции|Отчет о простоях (подробный)' %}
-          {% include 'dashboard/_report_panel.html' with tab='month' types='by_shift|total_days|chart|downtime|gross' type_labels='Отчет по смене|Отчет итоговый (с промежуточными значениями по дням)|График продукции|Отчет о простоях (сводный)|Отчет валовый по всем сменам' %}
-          {% include 'dashboard/_report_panel.html' with tab='quarter' types='total_months|gross|by_shift|downtime' type_labels='Отчет итоговый (с промежуточными значениями за месяцы)|Отчет валовый по всем сменам|Отчет по смене|Отчет о простоях (сводный)' %}
-          {% include 'dashboard/_report_panel.html' with tab='year' types='total_quarters|gross|by_shift|downtime' type_labels='Отчет итоговый (с промежуточными значениями за кварталы)|Отчет валовый по всем сменам|Отчет по смене|Отчет о простоях (сводный)' %}
-          {% include 'dashboard/_report_panel.html' with tab='period' types='total_year|gross|by_shift|downtime|detail' type_labels='Отчет итоговый (в пределах года)|Отчет валовый по всем сменам|Отчет по смене|Отчет о простоях (сводный)|Отчет подробный за период (не более 2х суток)' %}
-        </div>
-
-        <div class="d-flex gap-2 mt-3 align-items-center">
-          <button type="button" class="btn btn-primary px-4" id="btnBuild">
-            <i class="bi bi-file-earmark-text me-1"></i>Формировать
-          </button>
-          <span id="buildStatus" class="text-muted small"></span>
-        </div>
       </div>
     </div>
-  </aside>
-
-  {# ---- Правая колонка: результат (внутренняя прокрутка, страница не скроллится) ---- #}
-  <section class="reports-right">
-    <div class="reports-empty" id="reportsEmpty">
-      <div>
-        <i class="bi bi-graph-up-arrow d-block mb-2" style="font-size:2.2rem"></i>
-        Выберите параметры и нажмите «Формировать» —<br>отчёт и график появятся здесь.
-      </div>
-    </div>
-
-    <div id="reportResultWrap" class="d-none">
-      <div class="card shadow-sm mb-3" id="reportTablesCard">
-        <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center flex-wrap gap-2">
-          <span id="reportTitle"><i class="bi bi-table me-1"></i>Отчёт</span>
-          <span id="reportPeriod" class="small text-muted"></span>
-        </div>
-        <div class="card-body p-0 report-tables" id="reportTables"></div>
-      </div>
-      <div class="card shadow-sm mb-3 d-none" id="reportChartCard">
-        <div class="card-header bg-white fw-semibold"><i class="bi bi-graph-up me-1"></i><span id="reportChartHeader">График</span></div>
-        <div class="card-body">
-          <div class="chart-wrap"><canvas id="reportChart"></canvas></div>
-          <div id="reportZoom"></div>
-        </div>
-      </div>
-    </div>
-  </section>
-</div>
+  </div>
+</template>
 
 <script id="countersJson" type="application/json">{{ counters_json|safe }}</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script src="{% static 'dashboard/js/chart_zoom.js' %}?v=7"></script>
-<script src="{% static 'dashboard/js/chart3d.js' %}?v=7"></script>
-<script src="{% static 'dashboard/js/reports.js' %}?v=13"></script>
+<script src="{% static 'dashboard/js/chart_zoom.js' %}?v=8"></script>
+<script src="{% static 'dashboard/js/chart3d.js' %}?v=8"></script>
+<script src="{% static 'dashboard/js/reports.js' %}?v=14"></script>
 {% endblock %}

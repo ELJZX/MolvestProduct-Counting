@@ -22,10 +22,11 @@ urlpatterns = [
     path('reports/', views.reports_page, name='reports'),
     path('reports/build/', views.reports_build, name='reports_build'),
     path('reports/export/', views.reports_export, name='reports_export'),
+    path('reports/export-multi/', views.reports_export_multi, name='reports_export_multi'),
     path('reports/source/toggle/', views.reports_toggle_source, name='reports_toggle_source'),
 
-    # Логотип проекта (файл logo.png в корне)
-    path('logo.png', views.site_logo, name='site_logo'),
+    # Логотип проекта (файл logo.svg / logo.png в корне)
+    path('logo.svg', views.site_logo, name='site_logo'),
 
     # Продукция
     path('products/', views.products_list, name='products'),

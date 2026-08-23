@@ -1,3 +1,4 @@
+{% load report_tags %}
 {% if result.meta %}
 <div class="report-meta">
   {% for label, value in result.meta %}
@@ -14,9 +15,21 @@
     <div class="table-responsive">
       <table class="table table-sm table-hover align-middle mb-0 report-table">
         <thead>
+          {% if table.columns.0|startswith:'Код' and table.columns.1|startswith:'Заводской' %}
+          <tr>
+            <th colspan="2">Код:</th>
+            {% for c in table.columns|slice:'2:' %}<th>{{ c }}</th>{% endfor %}
+          </tr>
+          <tr>
+            <th>Продукта</th>
+            <th>Заводской</th>
+            {% for c in table.columns|slice:'2:' %}<th></th>{% endfor %}
+          </tr>
+          {% else %}
           <tr>
             {% for c in table.columns %}<th>{{ c }}</th>{% endfor %}
           </tr>
+          {% endif %}
         </thead>
         <tbody>
           {% for row in table.rows %}

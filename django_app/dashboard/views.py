@@ -19,6 +19,7 @@ from .models import (
 )
 from .reports import (
     build_day_chart_xlsx, build_downtime_csv, build_downtime_xlsx,
+    export_reports_bundle_csv, export_reports_bundle_xlsx,
     export_tables_csv, export_tables_xlsx,
 )
 
@@ -249,14 +250,16 @@ def reports_toggle_source(request):
 
 
 def site_logo(request):
-    """Логотип проекта: файл logo.png в корне (рядом с django_app/).
+    """Логотип проекта: файл logo.svg (или logo.png) в корне.
 
     Доступен всем (включая страницу входа), без авторизации.
     """
-    path = settings.BASE_DIR.parent / 'logo.png'
-    if not path.is_file():
-        raise Http404('Логотип не найден')
-    return FileResponse(open(path, 'rb'), content_type='image/png')
+    base = settings.BASE_DIR.parent
+    for name, ctype in (('logo.svg', 'image/svg+xml'), ('logo.png', 'image/png')):
+        path = base / name
+        if path.is_file():
+            return FileResponse(open(path, 'rb'), content_type=ctype)
+    raise Http404('Логотип не найден')
 
 
 @login_required
@@ -356,6 +359,75 @@ def reports_export(request):
         content_type = 'text/csv; charset=utf-8'
     else:
         filename, payload = export_tables_xlsx(meta, result['tables'])
+        content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    response = HttpResponse(payload, content_type=content_type)
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+@login_required
+def reports_export_multi(request):
+    """Пакетный экспорт нескольких сформированных отчётов в один файл.
+
+    POST JSON: {'fmt': 'xlsx'|'csv', 'reports': [{tab, type, counter, ...}]}.
+    Каждый отчёт — отдельный лист в Excel (мета-строки на каждом листе)
+    либо блок строк в CSV.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'Метод не поддерживается'}, status=405)
+    try:
+        data = json.loads(request.body or b'{}')
+    except json.JSONDecodeError:
+        data = {}
+    fmt = (data.get('fmt') or 'xlsx').lower()
+    specs = data.get('reports') or []
+    if not specs:
+        return JsonResponse({'ok': False, 'error': 'Нет сформированных отчётов.'}, status=400)
+
+    cfg = SystemConfig.get()
+    tab_label = {
+        'shift': 'Смена', 'day': 'Сутки', 'month': 'Месяц',
+        'quarter': 'Квартал', 'year': 'Год', 'period': 'Период',
+    }
+    items = []
+    for spec in specs:
+        tab = spec.get('tab') or 'shift'
+        rtype = spec.get('type') or 'total'
+        if cfg.data_source == SystemConfig.DATA_SOURCE_DBF:
+            result = dbf_reporting.build_report(
+                tab=tab, rtype=rtype, counter_id=spec.get('counter'), params=spec,
+            )
+        else:
+            result = reporting.build_report(
+                tab=tab, rtype=rtype, counter_id=spec.get('counter'), params=spec,
+            )
+        if not result.get('ok'):
+            return JsonResponse(
+                {'ok': False, 'error': result.get('error', 'Ошибка формирования отчёта')},
+                status=400,
+            )
+        if not result.get('tables'):
+            continue  # отчёт-график (только график) в пакетную выгрузку не входит
+        items.append({
+            'meta': {
+                'title': f'{result.get("title")} ({tab_label.get(tab, tab)})',
+                'period_label': result.get('period_label', ''),
+                'counter': result.get('counter', ''),
+                'generated_at': timezone.localtime().strftime('%d.%m.%Y %H:%M'),
+                'report_meta': result.get('meta') or [],
+            },
+            'tables': result.get('tables'),
+        })
+
+    if not items:
+        return JsonResponse({'ok': False, 'error': 'В отчётах нет таблиц для выгрузки.'}, status=400)
+
+    stamp = timezone.localtime().strftime('%Y-%m-%d_%H-%M')
+    if fmt == 'csv':
+        filename, payload = export_reports_bundle_csv(items)
+        content_type = 'text/csv; charset=utf-8'
+    else:
+        filename, payload = export_reports_bundle_xlsx(items)
         content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     response = HttpResponse(payload, content_type=content_type)
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
