@@ -258,51 +258,64 @@ def export_tables_xlsx(meta, tables):
 def _write_day_chart_sheet(wb, ws, meta, chart_data, data_sheet_name='Данные'):
     """Заполняет лист графиком продукции за сутки.
 
-    Сутки делятся на 4 части по 6 часов; каждая часть — отдельная диаграмма.
-    Все 4 диаграммы размещаются на одном листе A4 (альбомная ориентация,
-    вписываются в одну страницу). Цвет каждого столбца = цвет продукта,
-    доминировавшего в этот час; над каждым столбцом мелким шрифтом (8 pt)
-    выводится количество продукции.
+    Сутки делятся на 6 частей по 4 часа; каждая часть — отдельная диаграмма,
+    где каждый столбец — одна минута (240 столбцов на диаграмму). Цвет
+    столбца = цвет продукта за эту минуту, над столбцом мелким шрифтом (8 pt)
+    выводится количество продукции. Все 6 диаграмм помещаются на одном листе
+    A4 (альбомная ориентация, вписываются в одну страницу). Внизу листа —
+    легенда: код, цвет и название всех продуктов, попавших на графики.
     """
     from openpyxl.chart import BarChart, Reference
     from openpyxl.chart.label import DataLabelList
     from openpyxl.chart.series import DataPoint
     from openpyxl.chart.text import RichText
     from openpyxl.drawing.text import CharacterProperties, Paragraph, ParagraphProperties
-    from openpyxl.styles import Font
+    from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.worksheet.properties import PageSetupProperties
 
     labels = chart_data.get('labels') or []                       # 'HH:MM' по минутам
     data = (chart_data.get('datasets') or [{}])[0].get('data') or []
     details = chart_data.get('details') or []
 
-    # Агрегация по часам: количество за каждый час суток
-    per_hour = [0] * 24
-    hour_products = {}  # час -> {код: [сумма, цвет]}
-    for lbl, val, det in zip(labels, data, details):
-        if not lbl or ':' not in str(lbl):
-            continue
+    def parse_minute(lbl):
+        """'HH:MM' -> минута суток (0..1439); None, если не похоже на время."""
         try:
-            h = int(str(lbl).split(':')[0])
-        except ValueError:
+            hh, mm = str(lbl).split(':')
+            return int(hh) * 60 + int(mm)
+        except (ValueError, AttributeError):
+            return None
+
+    # Минута суток -> (количество, детали продукта). Порядок не важен:
+    # дальше всегда обращаемся по индексу минуты.
+    by_minute = {}
+    for lbl, val, det in zip(labels, data, details):
+        m = parse_minute(lbl)
+        if m is None or m < 0 or m >= 1440:
             continue
-        v = int(val or 0)
-        per_hour[h] += v
-        if det:
-            code = det.get('code')
-            hour_products.setdefault(h, {})
-            item = hour_products[h].setdefault(code, [0, det.get('color') or '#4472C4'])
-            item[0] += v
+        by_minute[m] = (int(val or 0), det)
 
-    # Доминирующий продукт/цвет каждого часа
-    hour_colors = ['#4472C4'] * 24
-    for h in range(24):
-        prods = hour_products.get(h) or {}
-        if prods:
-            best = max(prods, key=lambda k: prods[k][0])
-            hour_colors[h] = prods[best][1] or '#4472C4'
+    def hour_label(h):
+        """'24:00' -> '00:00' (час за полночью — это ноль часов новых суток)."""
+        return f'{h % 24:02d}:00'
 
-    # Один лист A4, альбомная ориентация, вписать в одну страницу
+    def minute_label(m):
+        return f'{m // 60:02d}:{m % 60:02d}'
+
+    # 6 секций по 4 часа (минуты 00:00..23:59)
+    sections = [(0, 4), (4, 8), (8, 12), (12, 16), (16, 20), (20, 24)]
+
+    # Продукты на графиках (порядок появления): код -> {name, color}
+    products = {}
+    order = []
+    for m in range(1440):
+        det = by_minute.get(m, (0, None))[1]
+        code = det.get('code') if det else None
+        if not code or code in products:
+            continue
+        products[code] = {'name': det.get('name'), 'color': det.get('color')}
+        order.append(code)
+
+    # Страница: A4, альбомная ориентация, вписать в одну страницу
     ws.page_setup.orientation = 'landscape'
     ws.page_setup.paperSize = 9  # A4
     ws.page_setup.fitToWidth = 1
@@ -318,34 +331,31 @@ def _write_day_chart_sheet(wb, ws, meta, chart_data, data_sheet_name='Данны
     ws_data = wb.create_sheet(data_sheet_name)
     ws_data.sheet_state = 'hidden'
 
-    sections = [
-        ('00:00 – 06:00', range(0, 6)),
-        ('06:00 – 12:00', range(6, 12)),
-        ('12:00 – 18:00', range(12, 18)),
-        ('18:00 – 24:00', range(18, 24)),
-    ]
+    # Данные секций на скрытом листе: минута/значение в колонках A..L (строки 1-240)
+    for si, (h0, h1) in enumerate(sections):
+        col = 1 + si * 2  # A, C, E, G, I, K
+        row = 1
+        for m in range(h0 * 60, h1 * 60):
+            ws_data.cell(row=row, column=col, value=minute_label(m))
+            ws_data.cell(row=row, column=col + 1, value=by_minute.get(m, (0, None))[0])
+            row += 1
 
-    # Данные секций на скрытом листе: часы/значения в колонках A..H (строки 1-6)
-    for si, (_title, hrs) in enumerate(sections):
-        col = 1 + si * 2  # A, C, E, G
-        for j, h in enumerate(hrs):
-            ws_data.cell(row=1 + j, column=col, value=f'{h:02d}:00')
-            ws_data.cell(row=1 + j, column=col + 1, value=per_hour[h])
-
+    # 6 диаграмм: 2 колонки x 3 ряда (вписываются на один лист A4)
     anchors = [
         ('A4', 0), ('H4', 1),
-        ('A22', 2), ('H22', 3),
+        ('A18', 2), ('H18', 3),
+        ('A32', 4), ('H32', 5),
     ]
     for (anchor, si) in anchors:
-        _title, hrs = sections[si]
+        h0, h1 = sections[si]
         col = 1 + si * 2
         chart = BarChart()
         chart.type = 'col'
-        chart.title = _title
-        chart.width = 12.5
-        chart.height = 9.5
-        data_ref = Reference(ws_data, min_col=col + 1, min_row=1, max_row=6)
-        cats_ref = Reference(ws_data, min_col=col, min_row=1, max_row=6)
+        chart.title = f'{hour_label(h0)} – {hour_label(h1)}'
+        chart.width = 13.0
+        chart.height = 6.4
+        data_ref = Reference(ws_data, min_col=col + 1, min_row=1, max_row=240)
+        cats_ref = Reference(ws_data, min_col=col, min_row=1, max_row=240)
         chart.add_data(data_ref, titles_from_data=False)
         chart.set_categories(cats_ref)
         # Подписи количества над каждым столбиком — мелким шрифтом (8 pt)
@@ -357,20 +367,46 @@ def _write_day_chart_sheet(wb, ws, meta, chart_data, data_sheet_name='Данны
         tx_pr.p = [Paragraph(pPr=ParagraphProperties(
             defRPr=CharacterProperties(sz=800)))]
         chart.dataLabels.txPr = tx_pr
-        # Цвет каждого столбика = цвет продукта, доминировавшего в этот час
+        # Цвет каждого столбика = цвет продукта за эту минуту
         series = chart.series[0]
-        for j, h in enumerate(hrs):
+        for j, m in enumerate(range(h0 * 60, h1 * 60)):
             dp = DataPoint(idx=j)
-            dp.graphicalProperties.solidFill = _xlsx_hex(hour_colors[h]) or '4472C4'
+            det = by_minute.get(m, (0, None))[1]
+            dp.graphicalProperties.solidFill = _xlsx_hex(det.get('color') if det else None) or '6C757D'
             series.data_points.append(dp)
         chart.legend = None
         ws.add_chart(chart, anchor)
 
+    # Легенда внизу листа: код, цвет, название продукта
+    if order:
+        start_row = 47
+        ws.cell(row=start_row, column=1, value='Продукты на графиках:')
+        ws.cell(row=start_row, column=1).font = Font(bold=True, size=11)
+        ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=3)
+        header_row = start_row + 1
+        for ci, h in enumerate(['Код', 'Цвет', 'Название продукта']):
+            cell = ws.cell(row=header_row, column=ci + 1, value=h)
+            cell.font = Font(bold=True, color='FFFFFF')
+            cell.fill = PatternFill('solid', fgColor='FF1F4E78')
+        for i, code in enumerate(order, start=1):
+            p = products[code]
+            r = header_row + i
+            ws.cell(row=r, column=1, value=code)
+            color_cell = ws.cell(row=r, column=2)
+            hexc = _xlsx_hex(p.get('color'))
+            if hexc:
+                color_cell.fill = PatternFill('solid', fgColor=hexc)
+            color_cell.alignment = Alignment(horizontal='center')
+            ws.cell(row=r, column=3, value=p.get('name') or '')
+        for col, w in zip('ABC', [10, 12, 50]):
+            ws.column_dimensions[col].width = w
+
 
 def build_day_chart_xlsx(meta, chart_data):
-    """График продукции за сутки в Excel: 4 диаграммы по 6 часов на одном
-    листе A4 (альбомная ориентация), цвет столбцов = цвет продукта,
-    подписи количества над столбцами мелким шрифтом."""
+    """График продукции за сутки в Excel: 6 диаграмм по 4 часа на одном
+    листе A4 (альбомная ориентация), каждый столбец — минута, цвет столбца
+    = цвет продукта, подписи количества над столбцами мелким шрифтом,
+    внизу — легенда продуктов."""
     from openpyxl import Workbook
     wb = Workbook()
     ws = wb.active
