@@ -330,16 +330,12 @@ def _write_day_chart_sheet(wb, ws, meta, chart_data, data_sheet_name='Данны
 
     Сутки делятся на 6 частей по 4 часа; каждая часть — отдельная диаграмма,
     где каждый столбец — одна минута (240 столбцов на диаграмму). Цвет
-    столбца = цвет продукта за эту минуту, над столбцом мелким шрифтом (8 pt)
-    выводится количество продукции. Все 6 диаграмм помещаются на одном листе
-    A4 (альбомная ориентация, вписываются в одну страницу). Внизу листа —
+    столбца = цвет продукта за эту минуту. Все 6 диаграмм помещаются на одном
+    листе A4 (альбомная ориентация, вписываются в одну страницу). Внизу листа —
     легенда: код, цвет и название всех продуктов, попавших на графики.
     """
     from openpyxl.chart import BarChart, Reference
-    from openpyxl.chart.label import DataLabelList
     from openpyxl.chart.series import DataPoint
-    from openpyxl.chart.text import RichText
-    from openpyxl.drawing.text import CharacterProperties, Paragraph, ParagraphProperties
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.worksheet.properties import PageSetupProperties
 
@@ -439,15 +435,6 @@ def _write_day_chart_sheet(wb, ws, meta, chart_data, data_sheet_name='Данны
         chart.x_axis.tickMarkSkip = 5
         chart.y_axis.delete = False
         chart.y_axis.axPos = 'l'
-        # Подписи количества над каждым столбиком — мелким шрифтом (7 pt)
-        chart.dataLabels = DataLabelList()
-        chart.dataLabels.showVal = True
-        chart.dataLabels.numFmt = '0'
-        chart.dataLabels.dLblPos = 'outEnd'
-        tx_pr = RichText()
-        tx_pr.p = [Paragraph(pPr=ParagraphProperties(
-            defRPr=CharacterProperties(sz=700)))]
-        chart.dataLabels.txPr = tx_pr
         # Цвет каждого столбика = цвет продукта за эту минуту
         series = chart.series[0]
         for j, m in enumerate(range(h0 * 60, h1 * 60)):
@@ -494,8 +481,7 @@ def _write_day_chart_sheet(wb, ws, meta, chart_data, data_sheet_name='Данны
 def build_day_chart_xlsx(meta, chart_data):
     """График продукции за сутки в Excel: 6 диаграмм по 4 часа на одном
     листе A4 (альбомная ориентация), каждый столбец — минута, цвет столбца
-    = цвет продукта, подписи количества над столбцами мелким шрифтом,
-    внизу — легенда продуктов. Лист защищён от форматирования."""
+    = цвет продукта, внизу — легенда продуктов. Лист защищён от форматирования."""
     from openpyxl import Workbook
     wb = Workbook()
     ws = wb.active
