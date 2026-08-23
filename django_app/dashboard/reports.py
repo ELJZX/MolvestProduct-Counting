@@ -431,6 +431,14 @@ def _write_day_chart_sheet(wb, ws, meta, chart_data, data_sheet_name='Данны
         cats_ref = Reference(ws_data, min_col=col, min_row=1, max_row=240)
         chart.add_data(data_ref, titles_from_data=False)
         chart.set_categories(cats_ref)
+        # Ось категорий — внизу (openpyxl по умолчанию ставит её слева; в
+        # образце Excel она внизу), подписи времени — каждые 5 минут.
+        chart.x_axis.delete = False
+        chart.x_axis.axPos = 'b'
+        chart.x_axis.tickLblSkip = 5
+        chart.x_axis.tickMarkSkip = 5
+        chart.y_axis.delete = False
+        chart.y_axis.axPos = 'l'
         # Подписи количества над каждым столбиком — мелким шрифтом (8 pt)
         chart.dataLabels = DataLabelList()
         chart.dataLabels.showVal = True

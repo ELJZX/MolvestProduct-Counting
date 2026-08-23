@@ -379,8 +379,25 @@ class ReportLog(models.Model):
         related_name='report_logs', verbose_name='Линия',
         help_text='Пусто для запасного режима (файлы DBF).',
     )
-    tab = models.CharField('Вкладка', max_length=20)
-    rtype = models.CharField('Тип отчёта', max_length=30)
+    tab = models.CharField(
+        'Вкладка', max_length=20,
+        choices=[
+            ('shift', 'Смена'), ('day', 'Сутки'), ('month', 'Месяц'),
+            ('quarter', 'Квартал'), ('year', 'Год'), ('period', 'Период'),
+        ],
+    )
+    rtype = models.CharField(
+        'Тип отчёта', max_length=30,
+        choices=[
+            ('total', 'Итоговый'), ('detail', 'Подробный'),
+            ('detail_shifts', 'Подробный по сменам'), ('chart', 'График'),
+            ('downtime', 'Простои'), ('by_shift', 'По смене'),
+            ('total_days', 'Итоговый по дням'), ('gross', 'Валовый'),
+            ('total_months', 'Итоговый по месяцам'),
+            ('total_quarters', 'Итоговый по кварталам'),
+            ('total_year', 'Итоговый в пределах года'),
+        ],
+    )
     period_start = models.DateTimeField('Начало периода')
     period_end = models.DateTimeField('Окончание периода')
     number = models.PositiveIntegerField('Номер за период')
