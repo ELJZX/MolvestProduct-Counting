@@ -4,9 +4,7 @@
     <div class="report-types">
       {% for t, lbl in types|zip_lists:type_labels %}
         <div class="form-check form-check-inline">
-          {# input внутри label и без id/for: при клике на текст не ищется
-             элемент по id (в мультиблоковой вкладке «Отчёты» id дублируются,
-             из-за чего страница «прыгала» к первому блоку) #}
+          {# radio внутри label, без id/for: страница не прыгает к первому блоку #}
           <label class="form-check-label report-type-label">
             <input class="form-check-input report-type" type="radio" name="rtype_{{ tab }}"
                    value="{{ t }}"{% if forloop.first %} checked{% endif %}>
