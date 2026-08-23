@@ -25,4 +25,5 @@ staticfiles/
 report_*.xlsx
 report_*.csv
 chart_*.xlsx
+reports_comparison*.xlsx
 "DBF VIKO"/

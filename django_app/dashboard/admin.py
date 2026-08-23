@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 
 from .models import (
     ControllerReading, Counter, Line, Product, ProductAssignment,
-    ProductionRecord, ReportLog, Shop, UserProfile,
+    ProductionRecord, ReportLog, Shop, SystemConfig, UserProfile,
 )
 
 
@@ -78,6 +78,26 @@ class ReportLogAdmin(admin.ModelAdmin):
     list_filter = ('tab', 'rtype', 'line')
     search_fields = ('identifier', 'line__name')
     date_hierarchy = 'created_at'
+
+
+@admin.register(SystemConfig)
+class SystemConfigAdmin(admin.ModelAdmin):
+    """Настройки системы: источник данных для отчётов и путь к папке DBF.
+
+    Позволяет администратору быстро поменять папку с файлами *.dbf
+    (запасной режим отчётов) прямо из админки Django.
+    """
+    list_display = ('data_source', 'dbf_dir', 'resolved_dbf_dir_display', 'updated_at')
+    fields = ('data_source', 'dbf_dir')
+    readonly_fields = ('resolved_dbf_dir_display',)
+
+    def has_add_permission(self, request):
+        # Настройки — одиночная запись (pk=1), создаётся автоматически
+        return not SystemConfig.objects.exists()
+
+    @admin.display(description='Фактическая папка DBF')
+    def resolved_dbf_dir_display(self, obj):
+        return obj.resolved_dbf_dir()
 
 
 class UserProfileInline(admin.StackedInline):

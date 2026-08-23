@@ -4,15 +4,57 @@ import io
 
 from django.utils import timezone
 
+# Пароль защиты книги/листов от форматирования (защита от подделки отчётов)
+REPORT_PROTECT_PASSWORD = 'molvest-report'
+
 
 def _xlsx_style():
-    """Общие стили Excel-отчётов."""
-    from openpyxl.styles import Font, PatternFill
+    """Общие стили Excel-отчётов: заголовок шапки таблицы (без заливки —
+    фон ячеек в отчётах не используется), шрифт заголовка листа."""
+    from openpyxl.styles import Font
     return (
-        Font(bold=True, color='FFFFFF'),
-        PatternFill('solid', fgColor='FF1F4E78'),
+        Font(bold=True),
         Font(bold=True, size=14),
     )
+
+
+def _table_border():
+    """Тонкая окантовка таблицы отчёта."""
+    from openpyxl.styles import Border, Side
+    thin = Side(style='thin', color='FF7F7F7F')
+    return Border(left=thin, right=thin, top=thin, bottom=thin)
+
+
+def _finalize_sheet(ws):
+    """Финальное оформление листа отчёта: без сетки ячеек на фоне и с защитой
+    от форматирования — ячейки нельзя править, заливать, менять границы и
+    шрифты (нельзя подделать отчёт). Разрешён только просмотр и выделение.
+    """
+    ws.sheet_view.showGridLines = False
+    ws.protection.sheet = True
+    ws.protection.password = REPORT_PROTECT_PASSWORD
+    ws.protection.formatCells = False
+    ws.protection.formatColumns = False
+    ws.protection.formatRows = False
+    ws.protection.insertColumns = False
+    ws.protection.insertRows = False
+    ws.protection.insertHyperlinks = False
+    ws.protection.deleteColumns = False
+    ws.protection.deleteRows = False
+    ws.protection.sort = False
+    ws.protection.autoFilter = False
+    ws.protection.pivotTables = False
+    ws.protection.objects = False
+    ws.protection.scenarios = False
+    ws.protection.selectLockedCells = True
+    ws.protection.selectUnlockedCells = True
+
+
+def _protect_workbook(wb):
+    """Защита структуры книги: нельзя добавлять/удалять/переименовывать листы."""
+    wb.security.lockStructure = True
+    wb.security.lockWindows = False
+    wb.security.workbookPassword = REPORT_PROTECT_PASSWORD
 
 
 # ---------------------------------------------------------------------------
@@ -20,10 +62,15 @@ def _xlsx_style():
 # ---------------------------------------------------------------------------
 
 def build_downtime_xlsx(meta, events):
-    """Отчёт о простоях: события с длительностью, сводка по линиям."""
+    """Отчёт о простоях: события с длительностью, сводка по линиям.
+
+    Без сетки и заливок на фоне; таблица — только с окантовкой; листы и книга
+    защищены от форматирования (нельзя подделать отчёт).
+    """
     from openpyxl import Workbook
     from openpyxl.styles import Font
-    header_font, header_fill, title_font = _xlsx_style()
+    header_font, title_font = _xlsx_style()
+    border = _table_border()
 
     wb = Workbook()
     ws = wb.active
@@ -37,10 +84,11 @@ def build_downtime_xlsx(meta, events):
     ws.append(headers)
     for cell in ws[5]:
         cell.font = header_font
-        cell.fill = header_fill
+        cell.border = border
 
     per_line = {}
     for i, e in enumerate(events, start=1):
+        row_idx = ws.max_row + 1
         ws.append([
             i, e['line_name'], e['shop_name'],
             f"{e['product_code']} — {e['product_name']}",
@@ -49,28 +97,38 @@ def build_downtime_xlsx(meta, events):
             e['minutes'],
             'продолжается' if e['ongoing'] else 'завершён',
         ])
+        for cell in ws[row_idx]:
+            cell.border = border
         per_line[e['line_name']] = per_line.get(e['line_name'], 0) + e['minutes']
 
     total_row = ws.max_row + 1
     ws.cell(row=total_row, column=6, value='ИТОГО, мин:').font = Font(bold=True)
     ws.cell(row=total_row, column=7, value=meta['total_minutes']).font = Font(bold=True)
+    for cell in ws[total_row]:
+        cell.border = border
 
     for col, w in zip('ABCDEFGH', [5, 42, 26, 40, 18, 18, 16, 14]):
         ws.column_dimensions[col].width = w
     ws.freeze_panes = 'A6'
+    _finalize_sheet(ws)
 
     if per_line:
         ws2 = wb.create_sheet('Сводка по линиям')
         ws2.append(['Линия', 'Простоев', 'Минут'])
         for cell in ws2[1]:
             cell.font = header_font
-            cell.fill = header_fill
+            cell.border = border
         for name, minutes in per_line.items():
+            row_idx = ws2.max_row + 1
             ws2.append([name, sum(1 for e in events if e['line_name'] == name), minutes])
+            for cell in ws2[row_idx]:
+                cell.border = border
         ws2.column_dimensions['A'].width = 42
         ws2.column_dimensions['B'].width = 10
         ws2.column_dimensions['C'].width = 10
+        _finalize_sheet(ws2)
 
+    _protect_workbook(wb)
     buf = io.BytesIO()
     wb.save(buf)
     return meta['filename_xlsx'], buf.getvalue()
@@ -124,16 +182,18 @@ def _xlsx_hex(color):
 def _write_report_sheet(ws, meta, table, write_meta=True):
     """Заполняет лист Excel одной таблицей отчёта.
 
-    Формат по образцу: объединённый заголовок отчёта по ширине листа,
-    «Сформирован:», шапка отчёта (мета-строки, каждая объединена по ширине),
-    строка по центру (если есть), шапка таблицы (жирная, по центру,
-    на тёмно-синем фоне; для колонок «Код продукта | Заводской код | …» —
-    двухстрочная: «Код:» объединено по 2 колонкам + «Продукта | Заводской»),
-    данные, итог, примечание. Ширина колонок — по количеству символов.
+    Формат: объединённый заголовок отчёта по ширине листа, «Сформирован:»,
+    шапка отчёта (мета-строки, каждая объединена по ширине), строка по центру
+    (если есть), шапка таблицы (жирная, по центру; для колонок «Код продукта |
+    Заводской код | …» — двухстрочная: «Код:» объединено по 2 колонкам +
+    «Продукта | Заводской»), данные, итог, примечание. Сетка ячеек на фоне и
+    заливки не используются — таблица только с окантовкой. Лист защищён от
+    форматирования.
     """
     from openpyxl.styles import Alignment, Font
     from openpyxl.utils import get_column_letter
-    header_font, header_fill, _ = _xlsx_style()
+    header_font, _ = _xlsx_style()
+    border = _table_border()
 
     def merge_row(row_idx, ncols):
         if ncols > 1:
@@ -171,7 +231,7 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
         ws[ws.max_row][0].alignment = Alignment(horizontal='center')
         merge_row(ws.max_row, ncols)
 
-    # 6) Шапка таблицы — жирная белая на тёмно-синем, по центру
+    # 6) Шапка таблицы — жирная по центру, без заливки, с окантовкой
     header_row = ws.max_row
     if columns:
         two_row = (len(columns) >= 2
@@ -184,31 +244,36 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
             header_row = ws.max_row
             for cell in ws[header_row]:
                 cell.font = header_font
-                cell.fill = header_fill
+                cell.border = border
                 cell.alignment = Alignment(horizontal='center', vertical='center')
             ws.append(['Продукта', 'Заводской'] + [''] * max(0, len(columns) - 2))
             header_row = ws.max_row
             for cell in ws[header_row]:
                 cell.font = header_font
-                cell.fill = header_fill
+                cell.border = border
                 cell.alignment = Alignment(horizontal='center', vertical='center')
         else:
             ws.append(columns)
             header_row = ws.max_row
             for cell in ws[header_row]:
                 cell.font = header_font
-                cell.fill = header_fill
+                cell.border = border
                 cell.alignment = Alignment(horizontal='center', vertical='center')
 
-    # 7) Данные
+    # 7) Данные (с окантовкой)
     for row in table.get('rows') or []:
+        row_idx = ws.max_row + 1
         ws.append([_fmt_cell(v) for v in row])
+        for cell in ws[row_idx]:
+            cell.border = border
 
-    # 8) Итог — жирный
+    # 8) Итог — жирный, с окантовкой
     if table.get('total_row'):
+        row_idx = ws.max_row + 1
         ws.append([_fmt_cell(v) for v in table['total_row']])
-        for cell in ws[ws.max_row]:
+        for cell in ws[row_idx]:
             cell.font = Font(bold=True)
+            cell.border = border
 
     if table.get('note'):
         ws.append([])
@@ -240,16 +305,21 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
                     cell.alignment = Alignment(wrap_text=True, vertical='top')
 
     ws.freeze_panes = f'A{header_row + 1}'
+    _finalize_sheet(ws)
 
 
 def export_tables_xlsx(meta, tables):
-    """Каждая таблица отчёта — отдельный лист Excel (мета-строки — на первом)."""
+    """Каждая таблица отчёта — отдельный лист Excel (мета-строки — на первом).
+
+    Листы без сетки и заливок, таблица с окантовкой, книга защищена от
+    форматирования."""
     from openpyxl import Workbook
     wb = Workbook()
     wb.remove(wb.active)
     for idx, table in enumerate(tables, start=1):
         ws = wb.create_sheet(f'Лист{idx}')
         _write_report_sheet(ws, meta, table, write_meta=(idx == 1))
+    _protect_workbook(wb)
     buf = io.BytesIO()
     wb.save(buf)
     return meta['filename_xlsx'], buf.getvalue()
@@ -330,6 +400,7 @@ def _write_day_chart_sheet(wb, ws, meta, chart_data, data_sheet_name='Данны
     # Данные графика — на отдельном скрытом листе (пользователю не видны)
     ws_data = wb.create_sheet(data_sheet_name)
     ws_data.sheet_state = 'hidden'
+    _finalize_sheet(ws_data)
 
     # Данные секций на скрытом листе: минута/значение в колонках A..L (строки 1-240)
     for si, (h0, h1) in enumerate(sections):
@@ -340,11 +411,13 @@ def _write_day_chart_sheet(wb, ws, meta, chart_data, data_sheet_name='Данны
             ws_data.cell(row=row, column=col + 1, value=by_minute.get(m, (0, None))[0])
             row += 1
 
-    # 6 диаграмм: 2 колонки x 3 ряда (вписываются на один лист A4)
+    # 6 диаграмм: 2 колонки x 3 ряда (вписываются на один лист A4).
+    # Размер и расстановка — как в образце: 15 x 7.5 см, колонки A/L,
+    # ряды 4/21/38 (диаграммы не накладываются друг на друга).
     anchors = [
-        ('A4', 0), ('H4', 1),
-        ('A18', 2), ('H18', 3),
-        ('A32', 4), ('H32', 5),
+        ('A4', 0), ('L4', 1),
+        ('A21', 2), ('L21', 3),
+        ('A38', 4), ('L38', 5),
     ]
     for (anchor, si) in anchors:
         h0, h1 = sections[si]
@@ -352,8 +425,8 @@ def _write_day_chart_sheet(wb, ws, meta, chart_data, data_sheet_name='Данны
         chart = BarChart()
         chart.type = 'col'
         chart.title = f'{hour_label(h0)} – {hour_label(h1)}'
-        chart.width = 13.0
-        chart.height = 6.4
+        chart.width = 15.0
+        chart.height = 7.5
         data_ref = Reference(ws_data, min_col=col + 1, min_row=1, max_row=240)
         cats_ref = Reference(ws_data, min_col=col, min_row=1, max_row=240)
         chart.add_data(data_ref, titles_from_data=False)
@@ -377,41 +450,50 @@ def _write_day_chart_sheet(wb, ws, meta, chart_data, data_sheet_name='Данны
         chart.legend = None
         ws.add_chart(chart, anchor)
 
-    # Легенда внизу листа: код, цвет, название продукта
+    # Легенда внизу листа: код, цвет (образец цвета), название продукта.
+    # Расположена ниже последнего ряда диаграмм (как в образце). Без заливки
+    # фона: только окантовка; цвет продукта — заливкой ячейки-образца.
     if order:
-        start_row = 47
+        border = _table_border()
+        start_row = 55
         ws.cell(row=start_row, column=1, value='Продукты на графиках:')
         ws.cell(row=start_row, column=1).font = Font(bold=True, size=11)
         ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=3)
         header_row = start_row + 1
         for ci, h in enumerate(['Код', 'Цвет', 'Название продукта']):
             cell = ws.cell(row=header_row, column=ci + 1, value=h)
-            cell.font = Font(bold=True, color='FFFFFF')
-            cell.fill = PatternFill('solid', fgColor='FF1F4E78')
+            cell.font = Font(bold=True)
+            cell.border = border
         for i, code in enumerate(order, start=1):
             p = products[code]
             r = header_row + i
-            ws.cell(row=r, column=1, value=code)
+            code_cell = ws.cell(row=r, column=1, value=code)
+            code_cell.border = border
             color_cell = ws.cell(row=r, column=2)
             hexc = _xlsx_hex(p.get('color'))
             if hexc:
                 color_cell.fill = PatternFill('solid', fgColor=hexc)
             color_cell.alignment = Alignment(horizontal='center')
-            ws.cell(row=r, column=3, value=p.get('name') or '')
+            color_cell.border = border
+            name_cell = ws.cell(row=r, column=3, value=p.get('name') or '')
+            name_cell.border = border
         for col, w in zip('ABC', [10, 12, 50]):
             ws.column_dimensions[col].width = w
+
+    _finalize_sheet(ws)
 
 
 def build_day_chart_xlsx(meta, chart_data):
     """График продукции за сутки в Excel: 6 диаграмм по 4 часа на одном
     листе A4 (альбомная ориентация), каждый столбец — минута, цвет столбца
     = цвет продукта, подписи количества над столбцами мелким шрифтом,
-    внизу — легенда продуктов."""
+    внизу — легенда продуктов. Лист защищён от форматирования."""
     from openpyxl import Workbook
     wb = Workbook()
     ws = wb.active
     ws.title = 'График за сутки'
     _write_day_chart_sheet(wb, ws, meta, chart_data, data_sheet_name='Данные')
+    _protect_workbook(wb)
     buf = io.BytesIO()
     wb.save(buf)
     return meta.get('filename_xlsx', 'chart_day.xlsx'), buf.getvalue()
@@ -454,12 +536,16 @@ def export_reports_bundle_xlsx(items):
         «Сформирован», мета-строками и всеми таблицами отчёта (пустая строка
         между таблицами);
       {'kind': 'chart', 'meta': {...}, 'chart': {...}} — лист с графиком за
-        сутки (4 диаграммы по 6 часов на листе A4).
+        сутки (6 диаграмм по 4 часа на листе A4).
+
+    Все листы — без сетки ячеек и заливок фона (таблица только с окантовкой),
+    книга защищена от форматирования (нельзя подделать отчёт).
     """
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font
     from openpyxl.utils import get_column_letter
-    header_font, header_fill, _ = _xlsx_style()
+    header_font, _ = _xlsx_style()
+    border = _table_border()
 
     wb = Workbook()
     wb.remove(wb.active)
@@ -517,14 +603,14 @@ def export_reports_bundle_xlsx(items):
                         header_row = ws.max_row
                     for cell in ws[ws.max_row]:
                         cell.font = header_font
-                        cell.fill = header_fill
+                        cell.border = border
                         cell.alignment = Alignment(horizontal='center', vertical='center')
                     ws.append(['Продукта', 'Заводской'] + [''] * max(0, len(columns) - 2))
                     if header_row is None:
                         header_row = ws.max_row
                     for cell in ws[ws.max_row]:
                         cell.font = header_font
-                        cell.fill = header_fill
+                        cell.border = border
                         cell.alignment = Alignment(horizontal='center', vertical='center')
                 else:
                     ws.append(columns)
@@ -532,14 +618,19 @@ def export_reports_bundle_xlsx(items):
                         header_row = ws.max_row
                     for cell in ws[ws.max_row]:
                         cell.font = header_font
-                        cell.fill = header_fill
+                        cell.border = border
                         cell.alignment = Alignment(horizontal='center', vertical='center')
             for row in table.get('rows') or []:
+                row_idx = ws.max_row + 1
                 ws.append([_fmt_cell(v) for v in row])
+                for cell in ws[row_idx]:
+                    cell.border = border
             if table.get('total_row'):
+                row_idx = ws.max_row + 1
                 ws.append([_fmt_cell(v) for v in table['total_row']])
-                for cell in ws[ws.max_row]:
+                for cell in ws[row_idx]:
                     cell.font = Font(bold=True)
+                    cell.border = border
             if table.get('note'):
                 ws.append([])
                 ws.append([table['note']])
@@ -567,7 +658,9 @@ def export_reports_bundle_xlsx(items):
             ws.column_dimensions[get_column_letter(col_idx)].width = width
         if header_row:
             ws.freeze_panes = f'A{header_row + 1}'
+        _finalize_sheet(ws)
 
+    _protect_workbook(wb)
     buf = io.BytesIO()
     wb.save(buf)
     return 'reports_comparison.xlsx', buf.getvalue()
