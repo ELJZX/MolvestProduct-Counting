@@ -370,8 +370,8 @@ def reports_export_multi(request):
     """Пакетный экспорт нескольких сформированных отчётов в один файл.
 
     POST JSON: {'fmt': 'xlsx'|'csv', 'reports': [{tab, type, counter, ...}]}.
-    Каждый отчёт — отдельный лист в Excel (мета-строки на каждом листе)
-    либо блок строк в CSV.
+    Каждый отчёт — отдельный лист в Excel (мета-строки на каждом листе;
+    график за сутки — 4 диаграммы по 6 часов на листе A4) либо блок строк в CSV.
     """
     if request.method != 'POST':
         return JsonResponse({'ok': False, 'error': 'Метод не поддерживается'}, status=405)
@@ -406,23 +406,39 @@ def reports_export_multi(request):
                 {'ok': False, 'error': result.get('error', 'Ошибка формирования отчёта')},
                 status=400,
             )
-        if not result.get('tables'):
-            continue  # отчёт-график (только график) в пакетную выгрузку не входит
-        items.append({
-            'meta': {
-                'title': f'{result.get("title")} ({tab_label.get(tab, tab)})',
-                'period_label': result.get('period_label', ''),
-                'counter': result.get('counter', ''),
-                'generated_at': timezone.localtime().strftime('%d.%m.%Y %H:%M'),
-                'report_meta': result.get('meta') or [],
-            },
-            'tables': result.get('tables'),
-        })
+        meta = {
+            'title': f'{result.get("title")} ({tab_label.get(tab, tab)})',
+            'period_label': result.get('period_label', ''),
+            'counter': result.get('counter', ''),
+            'generated_at': timezone.localtime().strftime('%d.%m.%Y %H:%M'),
+            'report_meta': result.get('meta') or [],
+        }
+        if result.get('tables'):
+            items.append({'kind': 'table', 'meta': meta, 'tables': result.get('tables')})
+        elif result.get('chart') and tab == 'day' and rtype == 'chart':
+            # График продукции за сутки — отдельный лист с 4 диаграммами по 6 часов
+            items.append({'kind': 'chart', 'meta': meta, 'chart': result['chart']})
+        elif result.get('chart'):
+            return JsonResponse(
+                {'ok': False, 'error': 'Отчёт содержит только график — для выгрузки '
+                                       'в Excel доступен график за сутки (Сутки → График продукции).'},
+                status=400,
+            )
+        else:
+            return JsonResponse(
+                {'ok': False, 'error': 'В отчёте нет данных для выгрузки.'},
+                status=400,
+            )
 
     if not items:
-        return JsonResponse({'ok': False, 'error': 'В отчётах нет таблиц для выгрузки.'}, status=400)
+        return JsonResponse({'ok': False, 'error': 'Нет сформированных отчётов.'}, status=400)
 
-    stamp = timezone.localtime().strftime('%Y-%m-%d_%H-%M')
+    if fmt == 'csv' and any(i.get('kind') == 'chart' for i in items):
+        return JsonResponse(
+            {'ok': False, 'error': 'Для графика доступна только выгрузка в XLSX.'},
+            status=400,
+        )
+
     if fmt == 'csv':
         filename, payload = export_reports_bundle_csv(items)
         content_type = 'text/csv; charset=utf-8'

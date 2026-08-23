@@ -107,6 +107,20 @@ def _fmt_cell(v):
     return str(v) if v is not None else ''
 
 
+def _xlsx_hex(color):
+    """Цвет '#RRGGBB' -> 'RRGGBB' (openpyxl ждёт hex без решётки).
+
+    Принимает также 'RRGGBB' и 'AARRGGBB' (8 символов). Возвращает None,
+    если значение не похоже на цвет.
+    """
+    if not color:
+        return None
+    s = str(color).strip().lstrip('#')
+    if len(s) not in (6, 8) or not all(ch in '0123456789abcdefABCDEF' for ch in s):
+        return None
+    return s.upper()
+
+
 def _write_report_sheet(ws, meta, table, write_meta=True):
     """Заполняет лист Excel одной таблицей отчёта.
 
@@ -241,16 +255,20 @@ def export_tables_xlsx(meta, tables):
     return meta['filename_xlsx'], buf.getvalue()
 
 
-def build_day_chart_xlsx(meta, chart_data):
-    """График продукции за сутки в Excel (тестовый режим).
+def _write_day_chart_sheet(wb, ws, meta, chart_data, data_sheet_name='Данные'):
+    """Заполняет лист графиком продукции за сутки.
 
-    Сутки делятся на 4 части по 6 часов; каждая часть — отдельный график
-    (столбцы по часам с подписью количества над каждым столбиком).
-    Все 4 графика размещаются на одном листе A4 (альбомная ориентация).
+    Сутки делятся на 4 части по 6 часов; каждая часть — отдельная диаграмма.
+    Все 4 диаграммы размещаются на одном листе A4 (альбомная ориентация,
+    вписываются в одну страницу). Цвет каждого столбца = цвет продукта,
+    доминировавшего в этот час; над каждым столбцом мелким шрифтом (8 pt)
+    выводится количество продукции.
     """
-    from openpyxl import Workbook
     from openpyxl.chart import BarChart, Reference
     from openpyxl.chart.label import DataLabelList
+    from openpyxl.chart.series import DataPoint
+    from openpyxl.chart.text import RichText
+    from openpyxl.drawing.text import CharacterProperties, Paragraph, ParagraphProperties
     from openpyxl.styles import Font
     from openpyxl.worksheet.properties import PageSetupProperties
 
@@ -273,7 +291,7 @@ def build_day_chart_xlsx(meta, chart_data):
         if det:
             code = det.get('code')
             hour_products.setdefault(h, {})
-            item = hour_products[h].setdefault(code, [0, det.get('color') or '#6c757d'])
+            item = hour_products[h].setdefault(code, [0, det.get('color') or '#4472C4'])
             item[0] += v
 
     # Доминирующий продукт/цвет каждого часа
@@ -283,13 +301,6 @@ def build_day_chart_xlsx(meta, chart_data):
         if prods:
             best = max(prods, key=lambda k: prods[k][0])
             hour_colors[h] = prods[best][1] or '#4472C4'
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'График за сутки'
-    # Данные графика — на отдельном скрытом листе (пользователю не видны)
-    ws_data = wb.create_sheet('Данные')
-    ws_data.sheet_state = 'hidden'
 
     # Один лист A4, альбомная ориентация, вписать в одну страницу
     ws.page_setup.orientation = 'landscape'
@@ -302,6 +313,10 @@ def build_day_chart_xlsx(meta, chart_data):
     ws['A1'].font = Font(bold=True, size=14)
     ws['A2'] = f'Период: {meta.get("period_label", "")} · Счетчик: {meta.get("counter", "")}'
     ws['A2'].font = Font(bold=True, size=11)
+
+    # Данные графика — на отдельном скрытом листе (пользователю не видны)
+    ws_data = wb.create_sheet(data_sheet_name)
+    ws_data.sheet_state = 'hidden'
 
     sections = [
         ('00:00 – 06:00', range(0, 6)),
@@ -333,14 +348,34 @@ def build_day_chart_xlsx(meta, chart_data):
         cats_ref = Reference(ws_data, min_col=col, min_row=1, max_row=6)
         chart.add_data(data_ref, titles_from_data=False)
         chart.set_categories(cats_ref)
-        # Подписи количества над каждым столбиком
+        # Подписи количества над каждым столбиком — мелким шрифтом (8 pt)
         chart.dataLabels = DataLabelList()
         chart.dataLabels.showVal = True
         chart.dataLabels.numFmt = '0'
         chart.dataLabels.dLblPos = 'outEnd'
+        tx_pr = RichText()
+        tx_pr.p = [Paragraph(pPr=ParagraphProperties(
+            defRPr=CharacterProperties(sz=800)))]
+        chart.dataLabels.txPr = tx_pr
+        # Цвет каждого столбика = цвет продукта, доминировавшего в этот час
+        series = chart.series[0]
+        for j, h in enumerate(hrs):
+            dp = DataPoint(idx=j)
+            dp.graphicalProperties.solidFill = _xlsx_hex(hour_colors[h]) or '4472C4'
+            series.data_points.append(dp)
         chart.legend = None
         ws.add_chart(chart, anchor)
 
+
+def build_day_chart_xlsx(meta, chart_data):
+    """График продукции за сутки в Excel: 4 диаграммы по 6 часов на одном
+    листе A4 (альбомная ориентация), цвет столбцов = цвет продукта,
+    подписи количества над столбцами мелким шрифтом."""
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'График за сутки'
+    _write_day_chart_sheet(wb, ws, meta, chart_data, data_sheet_name='Данные')
     buf = io.BytesIO()
     wb.save(buf)
     return meta.get('filename_xlsx', 'chart_day.xlsx'), buf.getvalue()
@@ -378,9 +413,12 @@ def export_tables_csv(meta, tables):
 def export_reports_bundle_xlsx(items):
     """Несколько отчётов — один Excel-файл, отдельный лист на каждый отчёт.
 
-    items: список {'meta': {...}, 'tables': [...]}. На каждом листе — свой
-    заголовок, «Сформирован», мета-строки отчёта и все его таблицы
-    последовательно (пустая строка между таблицами).
+    items: список отчётов:
+      {'kind': 'table', 'meta': {...}, 'tables': [...]} — лист с заголовком,
+        «Сформирован», мета-строками и всеми таблицами отчёта (пустая строка
+        между таблицами);
+      {'kind': 'chart', 'meta': {...}, 'chart': {...}} — лист с графиком за
+        сутки (4 диаграммы по 6 часов на листе A4).
     """
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font
@@ -391,6 +429,10 @@ def export_reports_bundle_xlsx(items):
     wb.remove(wb.active)
     for idx, item in enumerate(items, start=1):
         ws = wb.create_sheet(f'Отчет {idx}')
+        if item.get('kind') == 'chart':
+            _write_day_chart_sheet(wb, ws, item.get('meta') or {}, item.get('chart') or {},
+                                   data_sheet_name=f'Данные {idx}')
+            continue
         meta = item.get('meta') or {}
         tables = item.get('tables') or []
         ncols = max([len((t.get('columns') or [])) for t in tables] or [1])
