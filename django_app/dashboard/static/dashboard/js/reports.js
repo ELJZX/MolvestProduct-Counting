@@ -327,7 +327,7 @@
       if (st.fullDown.length) maxVal = st.fullDown.reduce((m, v) => Math.max(m, v || 0), maxVal);
       st.chart.options.scales.y.max = window.Molvest3D
         ? Molvest3D.yAxisMax(maxVal)
-        : Math.max(1, Math.ceil(maxVal * 1.3));
+        : Math.max(1, Math.ceil(maxVal * 1.4));
       // Данные простоя: набор столбцов не скрываем (ширина столбцов не меняется),
       // при выключенном чекбоксе просто обнуляем значения
       const showDown = downInput.checked;
