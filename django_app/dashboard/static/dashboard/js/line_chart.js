@@ -7,6 +7,10 @@
 (function () {
   'use strict';
 
+  if (window.ChartDataLabels && window.Chart) {
+    window.Chart.register(window.ChartDataLabels);
+  }
+
   const $ = (id) => document.getElementById(id);
 
   const lineId = JSON.parse($('lineId').textContent);
@@ -24,8 +28,9 @@
   let productsMap = {};
   let fullSeries = [];
   let currentSeries = [];
-  let downColumns = [];   // [{idx, text}] — столбцы простоя
+  let downColumns = [];   // [{idx, label, text}] — маркеры простоя
   let downTexts = {};     // idx в видимом окне -> текст подсказки
+  let downLabels = {};    // idx в видимом окне -> подпись («!» или итог простоя)
   let initialStepDone = false;
 
   const EMPTY_COLOR = '#e9ecef';
@@ -98,30 +103,32 @@
   }
 
   // ------------------------------------------------------------------
-  // Столбцы простоя: один красно-чёрный столбец на событие
+  // Маркеры простоя: на каждую минуту простоя — жёлтый «!», на последней
+  // минуте события — общее время простоя.
   // ------------------------------------------------------------------
   function buildDownColumns(series, events) {
-    const cols = [];
+    const markers = [];
     (events || []).forEach((ev) => {
-      let resumeIdx = -1;
-      for (let i = 0; i < series.length; i++) {
-        if (series[i].ts >= ev.end) { resumeIdx = i; break; }
-      }
-      let idx;
-      if (resumeIdx === -1) {
-        idx = series.length - 1; // простой продолжается / за пределами окна
-      } else if (series[resumeIdx].count > 0) {
-        idx = resumeIdx - 1;     // на минуте возобновления — только продукция
-      } else {
-        idx = resumeIdx;
-      }
-      if (idx < 0) idx = 0;
-      // Точная длительность простоя (вместо «(продолжается)» — если идёт сейчас)
+      const start = new Date(ev.start).getTime();
+      const end = new Date(ev.end).getTime();
+      const dur = fmtDuration(ev.minutes);
       const text = 'Простой: ' + fmtDT(ev.start) + ' – ' + fmtDT(ev.end) +
-        ' · ' + fmtDuration(ev.minutes);
-      cols.push({ idx: idx, text: text });
+        ' · ' + dur;
+      const idxs = [];
+      for (let i = 0; i < series.length; i++) {
+        const ts = new Date(series[i].ts).getTime();
+        if (ts >= start && ts < end) idxs.push(i);
+      }
+      if (!idxs.length) return;
+      idxs.forEach((idx, j) => {
+        markers.push({
+          idx: idx,
+          label: (j === idxs.length - 1) ? dur : '!',
+          text: text,
+        });
+      });
     });
-    return cols;
+    return markers;
   }
 
   // ------------------------------------------------------------------
@@ -282,9 +289,10 @@
       ? Molvest3D.yAxisMax(maxCount)
       : Math.max(1, Math.ceil(maxCount * 1.25));
 
-    // данные простоя для видимого окна
+    // данные простоя для видимого окна: жёлтый маркер на каждую минуту
     const downData = new Array(slice.length).fill(0);
     downTexts = {};
+    downLabels = {};
     const downOn = !document.getElementById('downToggle') ||
       document.getElementById('downToggle').checked;
     if (downOn) {
@@ -293,6 +301,7 @@
         if (local >= 0 && local < slice.length) {
           downData[local] = maxCount;
           downTexts[local] = c.text;
+          downLabels[local] = c.label;
         }
       });
     }
@@ -342,8 +351,10 @@
           data: {
             labels: [],
             datasets: [
-              { label: 'Продукция, шт/мин', data: [], backgroundColor: [], borderWidth: 0, borderRadius: 3 },
-              { label: 'Простой', data: [], backgroundColor: stripesPattern, borderWidth: 0, borderRadius: 2, molvest3d: false },
+              { label: 'Продукция, шт/мин', data: [], backgroundColor: [], borderWidth: 0, borderRadius: 3,
+                barPercentage: 1.0, categoryPercentage: 1.0 },
+              { label: 'Простой', data: [], backgroundColor: '#ffc107', borderWidth: 0, borderRadius: 0,
+                barPercentage: 1.0, categoryPercentage: 1.0, molvest3d: false },
             ],
           },
           options: {
@@ -354,8 +365,18 @@
               // Легенда скрыта: вместо неё — чекбокс «Отображать график простоя»
               legend: { display: false },
               tooltip: { enabled: false, external: tooltipHandler },
-              // 3D-столбцы (только для продукции; простой — плоские полосы)
+              // 3D-столбцы (только для продукции; простой — плоские жёлтые маркеры)
               molvest3d: { enabled: true, depth: 9 },
+              // Жёлтый «!» на каждой минуте простоя; итог — на последней минуте
+              datalabels: {
+                display: (ctx) => ctx.datasetIndex === 1 && !!downLabels[ctx.dataIndex],
+                color: '#6b4e00',
+                anchor: 'end',
+                align: 'end',
+                offset: -1,
+                font: { weight: 'bold', size: 9 },
+                formatter: (value, ctx) => downLabels[ctx.dataIndex] || '',
+              },
             },
             scales: {
               x: {

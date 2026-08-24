@@ -427,6 +427,8 @@ def _write_day_chart_sheet(wb, ws, meta, chart_data, data_sheet_name='Данны
         cats_ref = Reference(ws_data, min_col=col, min_row=1, max_row=240)
         chart.add_data(data_ref, titles_from_data=False)
         chart.set_categories(cats_ref)
+        # Столбики вплотную друг к другу (плотное отображение графика)
+        chart.gapWidth = 0
         # Ось категорий — внизу (openpyxl по умолчанию ставит её слева; в
         # образце Excel она внизу), подписи времени — каждые 5 минут.
         chart.x_axis.delete = False

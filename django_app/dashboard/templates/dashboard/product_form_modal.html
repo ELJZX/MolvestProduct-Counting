@@ -9,9 +9,9 @@
       {% if form.code.errors %}<div class="text-danger small">{{ form.code.errors }}</div>{% endif %}
     </div>
     <div class="col-md-5">
-      <label class="form-label" for="{{ form.name.id_for_label }}">Наименование</label>
-      {{ form.name }}
-      {% if form.name.errors %}<div class="text-danger small">{{ form.name.errors }}</div>{% endif %}
+      <label class="form-label" for="{{ form.code_1c.id_for_label }}">Код 1С</label>
+      {{ form.code_1c }}
+      {% if form.code_1c.errors %}<div class="text-danger small">{{ form.code_1c.errors }}</div>{% endif %}
     </div>
     <div class="col-md-4">
       <label class="form-label" for="{{ form.shop.id_for_label }}">Цех</label>
@@ -19,9 +19,9 @@
       {% if form.shop.errors %}<div class="text-danger small">{{ form.shop.errors }}</div>{% endif %}
     </div>
     <div class="col-12">
-      <label class="form-label" for="{{ form.code_1c.id_for_label }}">Код 1С</label>
-      {{ form.code_1c }}
-      {% if form.code_1c.errors %}<div class="text-danger small">{{ form.code_1c.errors }}</div>{% endif %}
+      <label class="form-label" for="{{ form.name.id_for_label }}">Наименование</label>
+      {{ form.name }}
+      {% if form.name.errors %}<div class="text-danger small">{{ form.name.errors }}</div>{% endif %}
     </div>
     <div class="col-12">
       <label class="form-label" for="{{ form.description.id_for_label }}">Описание</label>

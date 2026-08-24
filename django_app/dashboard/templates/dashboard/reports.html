@@ -4,7 +4,7 @@
 {% load static %}
 <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
   <div>
-    <h1 class="h3 mb-0"><i class="bi bi-bar-chart-line me-2"></i>Отчёты</h1>
+    <h1 class="h3 mb-0">Отчёты</h1>
   </div>
   <div class="d-flex gap-2 flex-wrap align-items-center">
     {% if is_admin %}
@@ -109,7 +109,8 @@
 
 <script id="countersJson" type="application/json">{{ counters_json|safe }}</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script src="{% static 'dashboard/js/chart_zoom.js' %}?v=8"></script>
 <script src="{% static 'dashboard/js/chart3d.js' %}?v=8"></script>
-<script src="{% static 'dashboard/js/reports.js' %}?v=14"></script>
+<script src="{% static 'dashboard/js/reports.js' %}?v=15"></script>
 {% endblock %}

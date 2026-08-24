@@ -193,20 +193,34 @@ def reports_page(request):
         # (например, 20442023.dbf -> код 2044). Файл за нужный период
         # подбирается автоматически при формировании отчёта.
         codes = dbf_reader.list_counter_codes(cfg.resolved_dbf_dir())
+        latest_last = None  # самая поздняя дата данных среди всех файлов
         for code, info in sorted(codes.items()):
+            if info['last'] and (latest_last is None or info['last'] > latest_last):
+                latest_last = info['last']
             label = f'Счётчик {code}'
             if info['first'] and info['last']:
                 label += (f' · {info["first"].strftime("%d.%m.%Y")} – '
                           f'{info["last"].strftime("%d.%m.%Y")}')
+            # Актуальность файла: дата и время последнего редактирования
+            if info.get('modified'):
+                label += (f' · обновлён {info["modified"].strftime("%d.%m.%Y %H:%M")}')
             label += f' · файлов: {len(info["files"])}'
             counters_json.append({
                 'id': code,
                 'name': f'Счётчик {code}',
                 'line': code,
                 'first_record': info['first'].isoformat() if info['first'] else None,
-                'now': now.isoformat(),
+                # «Весь период» в DBF должен брать последнюю дату в файле,
+                # а не текущее время (файлы могут заканчиваться раньше)
+                'now': info['last'].isoformat() if info['last'] else now.isoformat(),
             })
             counter_options.append({'id': code, 'label': label})
+        # В DBF дата/время по умолчанию — конец данных, а не «сейчас»,
+        # иначе у свежедобавленного блока дата вне диапазона файлов → «нет счётчика»
+        if latest_last:
+            latest_local = timezone.localtime(latest_last)
+            now_local = latest_local
+            years = list(range(latest_local.year, latest_local.year - 6, -1))
     else:
         for c in Counter.objects.select_related('line').order_by('id'):
             first = (ProductionRecord.objects

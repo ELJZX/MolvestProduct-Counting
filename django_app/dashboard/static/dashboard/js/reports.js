@@ -6,6 +6,10 @@
 (function () {
   'use strict';
 
+  if (window.ChartDataLabels && window.Chart) {
+    window.Chart.register(window.ChartDataLabels);
+  }
+
   const $ = (id) => document.getElementById(id);
   const MAX_REPORTS = 8;
   const EXPORT_FILE = { xlsx: 'reports_comparison.xlsx', csv: 'reports_comparison.csv' };
@@ -84,29 +88,31 @@
     return counterById[value] || counterById[parseInt(value, 10)];
   }
 
-  // Столбцы простоя на минутном графике: один красно-чёрный столбец на событие
+  // Маркеры простоя на минутном графике: на каждую минуту — жёлтый «!»,
+  // на последней минуте события — общее время простоя.
   function buildDownColumns(minuteTs, events, seriesData) {
-    const cols = [];
+    const markers = [];
     (events || []).forEach((ev) => {
+      const start = new Date(ev.start).getTime();
       const end = new Date(ev.end).getTime();
-      let resumeIdx = -1;
-      for (let i = 0; i < minuteTs.length; i++) {
-        if (new Date(minuteTs[i]).getTime() >= end) { resumeIdx = i; break; }
-      }
-      let idx;
-      if (resumeIdx === -1) {
-        idx = Math.max(0, minuteTs.length - 1);
-      } else if ((seriesData[resumeIdx] || 0) > 0) {
-        idx = resumeIdx - 1;
-      } else {
-        idx = resumeIdx;
-      }
-      if (idx < 0) idx = 0;
+      const dur = fmtDuration(ev.minutes);
       const text = 'Простой: ' + fmtDT(ev.start) + ' – ' + fmtDT(ev.end) +
-        ' · ' + fmtDuration(ev.minutes);
-      cols.push({ idx: idx, text: text });
+        ' · ' + dur;
+      const idxs = [];
+      for (let i = 0; i < minuteTs.length; i++) {
+        const ts = new Date(minuteTs[i]).getTime();
+        if (ts >= start && ts < end) idxs.push(i);
+      }
+      if (!idxs.length) return;
+      idxs.forEach((idx, j) => {
+        markers.push({
+          idx: idx,
+          label: (j === idxs.length - 1) ? dur : '!',
+          text: text,
+        });
+      });
     });
-    return cols;
+    return markers;
   }
 
   // --- Общий тултип графика (один на страницу) ---
@@ -223,7 +229,7 @@
       chartApi: null,
       fullLabels: [], fullData: [], chartDetails: [], chartColors: [],
       visibleLabels: [], visibleDetails: [],
-      minuteTs: [], fullDown: [], downColumns: [], downTexts: {},
+      minuteTs: [], fullDown: [], downColumns: [], downTexts: {}, downLabels: {},
       lastParams: null,
       lastReportId: null,
       built: false,
@@ -322,8 +328,10 @@
       // при выключенном чекбоксе просто обнуляем значения
       const showDown = downInput.checked;
       st.downTexts = {};
+      st.downLabels = {};
       let downData;
       if (st.downColumns.length) {
+        // минутный график: жёлтые маркеры с «!»/итогом на каждой минуте простоя
         downData = new Array(data.length).fill(0);
         if (showDown) {
           st.downColumns.forEach((c) => {
@@ -331,11 +339,15 @@
             if (local >= 0 && local < data.length) {
               downData[local] = maxVal;
               st.downTexts[local] = c.text;
+              st.downLabels[local] = c.label;
             }
           });
         }
+        st.chart.data.datasets[1].backgroundColor = '#ffc107';
       } else {
         downData = showDown ? st.fullDown.slice(w.min, w.max + 1) : new Array(data.length).fill(0);
+        // месячный график: минуты простоя по дням (красно-чёрные столбики)
+        st.chart.data.datasets[1].backgroundColor = stripesPattern;
       }
       st.chart.data.datasets[1].data = downData;
       st.chart.update('none');
@@ -370,15 +382,19 @@
                 backgroundColor: st.chartColors.slice(),
                 borderWidth: 0,
                 borderRadius: 3,
+                barPercentage: 1.0,
+                categoryPercentage: 1.0,
               },
               {
-                // Простои: на минутном графике — красно-чёрные столбцы,
+                // Простои: на минутном графике — жёлтые маркеры с «!»,
                 // на месячном — минуты простоя по дням
                 label: 'Простой',
                 data: [],
                 backgroundColor: stripesPattern,
                 borderWidth: 0,
-                borderRadius: 2,
+                borderRadius: 0,
+                barPercentage: 1.0,
+                categoryPercentage: 1.0,
                 molvest3d: false,
               },
             ],
@@ -392,6 +408,16 @@
               legend: { display: false },
               tooltip: { enabled: false, external: makeTooltipHandler(st) },
               molvest3d: { enabled: true, depth: 9 },
+              // Жёлтый «!» на каждой минуте простоя; итог — на последней минуте
+              datalabels: {
+                display: (ctx) => ctx.datasetIndex === 1 && !!st.downLabels[ctx.dataIndex],
+                color: '#6b4e00',
+                anchor: 'end',
+                align: 'end',
+                offset: -1,
+                font: { weight: 'bold', size: 9 },
+                formatter: (value, ctx) => st.downLabels[ctx.dataIndex] || '',
+              },
             },
             scales: {
               x: { grid: { display: false }, ticks: { maxTicksLimit: 16, maxRotation: 0, autoSkip: true } },

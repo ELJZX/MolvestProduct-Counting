@@ -160,6 +160,14 @@ def file_info(path):
     name = f'Объект {code}' + (f' · {year} г.' if year else '')
     first = _make_aware(first)
     last = _make_aware(last)
+    # Время последнего изменения файла (актуальность данных)
+    try:
+        mtime = os.path.getmtime(path)
+        modified = datetime.datetime.fromtimestamp(mtime)
+        modified_str = modified.strftime('%d.%m.%Y %H:%M')
+    except OSError:
+        modified = None
+        modified_str = '—'
     return {
         'filename': os.path.basename(path),
         'path': path,
@@ -169,6 +177,8 @@ def file_info(path):
         'record_count': record_count,
         'first': first,
         'last': last,
+        'modified': modified,
+        'modified_str': modified_str,
         'first_str': timezone.localtime(first).strftime('%d.%m.%Y %H:%M') if first else '—',
         'last_str': timezone.localtime(last).strftime('%d.%m.%Y %H:%M') if last else '—',
         'first_iso': first.isoformat() if first else None,
@@ -301,8 +311,10 @@ def list_counter_codes(dbf_dir):
         entry['files'].sort(key=lambda x: x['filename'])
         firsts = [f['first'] for f in entry['files'] if f['first']]
         lasts = [f['last'] for f in entry['files'] if f['last']]
+        mods = [f['modified'] for f in entry['files'] if f['modified']]
         entry['first'] = min(firsts) if firsts else None
         entry['last'] = max(lasts) if lasts else None
+        entry['modified'] = max(mods) if mods else None
     return by_code
 
 

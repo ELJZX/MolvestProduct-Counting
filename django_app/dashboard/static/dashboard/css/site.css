@@ -180,6 +180,13 @@ table.table {
 .product-code-badge {
   font-size: 1rem;
   min-width: 3.2rem;
+  display: inline-block;
+  text-align: center;
+  padding: .22rem .5rem;
+  border-radius: .4rem;
+  color: #fff;
+  font-weight: 600;
+  text-shadow: 0 0 2px rgba(0, 0, 0, .55);
 }
 .product-thumb {
   height: 64px;

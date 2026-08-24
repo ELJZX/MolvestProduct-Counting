@@ -298,8 +298,8 @@ def _dbf_shift_segments(paths, from_dt, to_dt):
     """Сегменты работы линии по сменам кода продукта в файлах DBF.
 
     Служебный/пустой код (000) разрывает сегмент. «Время простоя» сегмента —
-    минуты с нулевым счётом после окончания сегмента до следующего сегмента
-    (или до конца периода).
+    минуты с нулевым счётом внутри периода сегмента (пока продукт активен,
+    но подсчёт не ведётся).
     """
     segs = []
     cur = None
@@ -319,15 +319,12 @@ def _dbf_shift_segments(paths, from_dt, to_dt):
     if cur:
         segs.append(cur)
 
-    period_end = _floor_minute(to_dt)
-    for i, s in enumerate(segs):
-        gap_from = _floor_minute(s['end'])
-        gap_to = _floor_minute(segs[i + 1]['start']) if i + 1 < len(segs) else period_end
-        if gap_to > gap_from:
-            zero = sum(1 for r in _rows(paths, gap_from, min(gap_to, to_dt)) if r['count'] == 0)
-        else:
-            zero = 0
-        s['downtime'] = zero
+    # Простой сегмента — минуты с нулевым счётом внутри его периода.
+    # (Счётчик продолжает «держать» код продукта, но продукция не идёт.)
+    for s in segs:
+        s['downtime'] = sum(
+            1 for r in _rows(paths, s['start'], s['end']) if r['count'] == 0
+        )
     return segs
 
 
