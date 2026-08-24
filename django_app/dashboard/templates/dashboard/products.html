@@ -50,7 +50,6 @@
         <th>Название</th>
         <th>Цех</th>
         <th>Код 1С</th>
-        <th>Цвет на диаграмме</th>
         <th>Изображение</th>
         <th class="text-end">Действия</th>
       </tr>
@@ -65,10 +64,6 @@
           </td>
           <td>{% if product.shop %}{{ product.shop.name }}{% else %}<span class="text-muted">общий</span>{% endif %}</td>
           <td><code>{{ product.code_1c|default:'—' }}</code></td>
-          <td>
-            <span class="color-swatch" style="background:{{ product.color }}"></span>
-            <span class="color-value">{{ product.color|color_name }}</span>
-          </td>
           <td>
             {% if product.image %}
               <img src="{{ product.image.url }}" alt="" class="product-thumb" onerror="this.style.display='none'">
