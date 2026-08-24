@@ -329,13 +329,21 @@
       const showDown = downInput.checked;
       st.downTexts = {};
       st.downLabels = {};
-      let downData;
-      if (st.downColumns.length) {
-        // минутный график: жёлтые маркеры с «!»/итогом на каждой минуте простоя.
-        // Оба датасета — в одном стеке: столбики продукции стоят вплотную
-        // (иначе Chart.js делит ширину категории между двумя датасетами)
+      // Минутный график определяется по наличию поминутных меток (а не по
+      // простоям): даже без простоев столбики должны стоять вплотную.
+      // Оба датасета — в одном стеке: Chart.js не делит ширину категории
+      // (иначе столбики разрежены). Месячный график — без стека (простой рядом).
+      const isMinuteChart = st.minuteTs.length > 0;
+      if (isMinuteChart) {
         st.chart.data.datasets[0].stack = 'main';
         st.chart.data.datasets[1].stack = 'main';
+      } else {
+        st.chart.data.datasets[0].stack = undefined;
+        st.chart.data.datasets[1].stack = undefined;
+      }
+      let downData;
+      if (isMinuteChart) {
+        // минутный график: жёлтые маркеры с «!»/итогом на каждой минуте простоя
         downData = new Array(data.length).fill(0);
         if (showDown) {
           st.downColumns.forEach((c) => {
@@ -350,8 +358,6 @@
         st.chart.data.datasets[1].backgroundColor = '#ffc107';
       } else {
         // месячный график: минуты простоя по дням (красно-чёрные столбики рядом)
-        st.chart.data.datasets[0].stack = undefined;
-        st.chart.data.datasets[1].stack = undefined;
         downData = showDown ? st.fullDown.slice(w.min, w.max + 1) : new Array(data.length).fill(0);
         st.chart.data.datasets[1].backgroundColor = stripesPattern;
       }
@@ -387,7 +393,7 @@
                 data: st.fullData.slice(),
                 backgroundColor: st.chartColors.slice(),
                 borderWidth: 0,
-                borderRadius: 3,
+                borderRadius: 0,
                 barPercentage: 1.0,
                 categoryPercentage: 1.0,
               },
@@ -397,7 +403,8 @@
                 label: 'Простой',
                 data: [],
                 backgroundColor: stripesPattern,
-                borderWidth: 0,
+                borderWidth: 1,
+                borderColor: 'rgba(0,0,0,0.7)',
                 borderRadius: 0,
                 barPercentage: 1.0,
                 categoryPercentage: 1.0,

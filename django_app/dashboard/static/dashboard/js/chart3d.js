@@ -100,10 +100,20 @@
     ctx.fillStyle = grad;
     ctx.fillRect(x - w / 2, top, w, bottom - top);
 
-    // тонкая обводка для чёткости граней
-    ctx.strokeStyle = 'rgba(0,0,0,.10)';
+    // тонкая чёрная окантовка по периметру столбца (чтобы слипшиеся
+    // столбики были визуально различимы)
+    ctx.strokeStyle = 'rgba(0,0,0,.75)';
     ctx.lineWidth = 1;
+    // фронтальная грань
     ctx.strokeRect(x - w / 2 + .5, top + .5, w - 1, Math.max(0, bottom - top - 1));
+    // верхняя грань (контур «крышки»)
+    ctx.beginPath();
+    ctx.moveTo(x - w / 2, top);
+    ctx.lineTo(x + w / 2, top);
+    ctx.lineTo(x + w / 2 + dx, top - dy);
+    ctx.lineTo(x - w / 2 + dx, top - dy);
+    ctx.closePath();
+    ctx.stroke();
   }
 
   var plugin = {
