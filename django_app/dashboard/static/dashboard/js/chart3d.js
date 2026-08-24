@@ -101,19 +101,23 @@
     ctx.fillRect(x - w / 2, top, w, bottom - top);
 
     // тонкая чёрная окантовка по периметру столбца (чтобы слипшиеся
-    // столбики были визуально различимы)
-    ctx.strokeStyle = 'rgba(0,0,0,.75)';
-    ctx.lineWidth = 1;
-    // фронтальная грань
-    ctx.strokeRect(x - w / 2 + .5, top + .5, w - 1, Math.max(0, bottom - top - 1));
-    // верхняя грань (контур «крышки»)
-    ctx.beginPath();
-    ctx.moveTo(x - w / 2, top);
-    ctx.lineTo(x + w / 2, top);
-    ctx.lineTo(x + w / 2 + dx, top - dy);
-    ctx.lineTo(x - w / 2 + dx, top - dy);
-    ctx.closePath();
-    ctx.stroke();
+    // столбики были визуально различимы). Для очень узких столбцов
+    // (максимальное уменьшение, «Весь период») окантовку не рисуем —
+    // иначе график становится чёрным.
+    if (w >= 3) {
+      ctx.strokeStyle = 'rgba(0,0,0,.75)';
+      ctx.lineWidth = 1;
+      // фронтальная грань
+      ctx.strokeRect(x - w / 2 + .5, top + .5, w - 1, Math.max(0, bottom - top - 1));
+      // верхняя грань (контур «крышки»)
+      ctx.beginPath();
+      ctx.moveTo(x - w / 2, top);
+      ctx.lineTo(x + w / 2, top);
+      ctx.lineTo(x + w / 2 + dx, top - dy);
+      ctx.lineTo(x - w / 2 + dx, top - dy);
+      ctx.closePath();
+      ctx.stroke();
+    }
   }
 
   var plugin = {
@@ -148,6 +152,8 @@
     // столбиков: при вплотную стоящих столбцах обычная обводка каждого
     // столбика перекрывается соседним. Здесь проходим по всем датасетам
     // (продукция + простой) и обводим левую/правую/нижнюю грани.
+    // Для очень узких столбцов (максимальное уменьшение, «Весь период»)
+    // окантовку не рисуем — иначе график становится чёрным.
     afterDatasetsDraw: function (chart) {
       var ctx = chart.ctx;
       ctx.save();
@@ -163,7 +169,8 @@
           var top = el.y;
           var bottom = el.base;
           if (top === bottom) continue; // нулевой столбец не обводим
-          var w = Math.max(1, el.width || 8);
+          var w = el.width || 8;
+          if (w < 3) continue; // слишком узкий столбец — без окантовки
           var x0 = el.x - w / 2;
           var x1 = el.x + w / 2;
           ctx.beginPath();
