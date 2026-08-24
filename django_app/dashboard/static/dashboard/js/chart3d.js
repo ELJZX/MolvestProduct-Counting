@@ -143,6 +143,38 @@
         draw3DBar(ctx, x, top, bottom, w, color, depth);
       }
     },
+
+    // Чёрная окантовка по периметру каждого столбика рисуется ПОСЛЕ всех
+    // столбиков: при вплотную стоящих столбцах обычная обводка каждого
+    // столбика перекрывается соседним. Здесь проходим по всем датасетам
+    // (продукция + простой) и обводим левую/правую/нижнюю грани.
+    afterDatasetsDraw: function (chart) {
+      var ctx = chart.ctx;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,0,0,.85)';
+      ctx.lineWidth = 1;
+      for (var di = 0; di < chart.data.datasets.length; di++) {
+        var meta = chart.getDatasetMeta(di);
+        if (!meta || !meta.data) continue;
+        var elems = meta.data;
+        for (var i = 0; i < elems.length; i++) {
+          var el = elems[i];
+          if (!el || el.skip) continue;
+          var top = el.y;
+          var bottom = el.base;
+          if (top === bottom) continue; // нулевой столбец не обводим
+          var w = Math.max(1, el.width || 8);
+          var x0 = el.x - w / 2;
+          var x1 = el.x + w / 2;
+          ctx.beginPath();
+          ctx.moveTo(x0 + .5, top); ctx.lineTo(x0 + .5, bottom);   // левая
+          ctx.moveTo(x1 - .5, top); ctx.lineTo(x1 - .5, bottom);   // правая
+          ctx.moveTo(x0 + .5, bottom - .5); ctx.lineTo(x1 - .5, bottom - .5); // низ
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    },
   };
 
   window.Molvest3D = {

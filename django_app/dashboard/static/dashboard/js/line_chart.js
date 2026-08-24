@@ -10,6 +10,10 @@
   if (window.ChartDataLabels && window.Chart) {
     window.Chart.register(window.ChartDataLabels);
   }
+  // Регистрируем 3D-плагин (иначе ни 3D-столбцы, ни чёрная окантовка не рисуются)
+  if (window.Molvest3D && window.Molvest3D.plugin && window.Chart) {
+    window.Chart.register(window.Molvest3D.plugin);
+  }
 
   const $ = (id) => document.getElementById(id);
 
