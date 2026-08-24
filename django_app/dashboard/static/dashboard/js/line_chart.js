@@ -351,10 +351,10 @@
           data: {
             labels: [],
             datasets: [
-              { label: 'Продукция, шт/мин', data: [], backgroundColor: [], borderWidth: 0, borderRadius: 3,
-                barPercentage: 1.0, categoryPercentage: 1.0 },
+              { label: 'Продукция, шт/мин', data: [], backgroundColor: [], borderWidth: 0, borderRadius: 0,
+                barPercentage: 1.0, categoryPercentage: 1.0, stack: 'main' },
               { label: 'Простой', data: [], backgroundColor: '#ffc107', borderWidth: 0, borderRadius: 0,
-                barPercentage: 1.0, categoryPercentage: 1.0, molvest3d: false },
+                barPercentage: 1.0, categoryPercentage: 1.0, stack: 'main', molvest3d: false },
             ],
           },
           options: {

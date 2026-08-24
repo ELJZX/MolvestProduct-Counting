@@ -331,7 +331,11 @@
       st.downLabels = {};
       let downData;
       if (st.downColumns.length) {
-        // минутный график: жёлтые маркеры с «!»/итогом на каждой минуте простоя
+        // минутный график: жёлтые маркеры с «!»/итогом на каждой минуте простоя.
+        // Оба датасета — в одном стеке: столбики продукции стоят вплотную
+        // (иначе Chart.js делит ширину категории между двумя датасетами)
+        st.chart.data.datasets[0].stack = 'main';
+        st.chart.data.datasets[1].stack = 'main';
         downData = new Array(data.length).fill(0);
         if (showDown) {
           st.downColumns.forEach((c) => {
@@ -345,8 +349,10 @@
         }
         st.chart.data.datasets[1].backgroundColor = '#ffc107';
       } else {
+        // месячный график: минуты простоя по дням (красно-чёрные столбики рядом)
+        st.chart.data.datasets[0].stack = undefined;
+        st.chart.data.datasets[1].stack = undefined;
         downData = showDown ? st.fullDown.slice(w.min, w.max + 1) : new Array(data.length).fill(0);
-        // месячный график: минуты простоя по дням (красно-чёрные столбики)
         st.chart.data.datasets[1].backgroundColor = stripesPattern;
       }
       st.chart.data.datasets[1].data = downData;
