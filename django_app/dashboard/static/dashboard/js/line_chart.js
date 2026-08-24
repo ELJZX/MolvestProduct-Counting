@@ -291,7 +291,7 @@
     // Запас по оси Y: максимум + 20% сверху (самый высокий столбец — ~80% высоты)
     chart.options.scales.y.max = window.Molvest3D
       ? Molvest3D.yAxisMax(maxCount)
-      : Math.max(1, Math.ceil(maxCount * 1.25));
+      : Math.max(1, Math.ceil(maxCount * 1.3));
 
     // данные простоя для видимого окна: жёлтый маркер на каждую минуту
     const downData = new Array(slice.length).fill(0);

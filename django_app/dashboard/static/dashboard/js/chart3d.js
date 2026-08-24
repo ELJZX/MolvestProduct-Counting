@@ -58,10 +58,10 @@
     return nice * base;
   }
 
-  // Максимум оси Y: значение + 20% запаса сверху (столбец — 80% высоты)
+  // Максимум оси Y: значение + 30% запаса сверху (самый высокий столбец — ~77% высоты)
   function yAxisMax(max) {
     if (!(max > 0)) return 1;
-    return Math.max(1, Math.ceil(max * 1.25));
+    return Math.max(1, Math.ceil(max * 1.3));
   }
 
   // Рисует один 3D-столбец. x — центр столбца, top/bottom — пиксели (canvas: y вниз)
