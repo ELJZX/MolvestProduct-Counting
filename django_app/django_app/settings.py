@@ -124,7 +124,7 @@ MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 # Версия сборки (видна в шапке — по ней легко понять, какая версия запущена)
-APP_VERSION = '1.8.0'
+APP_VERSION = '1.8.1'
 
 # ---- DRF ----
 REST_FRAMEWORK = {

@@ -92,8 +92,9 @@
     return counterById[value] || counterById[parseInt(value, 10)];
   }
 
-  // Маркеры простоя на минутном графике: каждая минута простоя — точка;
-  // над каждым столбиком — жёлтый «!», при наведении — период простоя.
+  // Маркеры простоя на минутном графике: каждая минута простоя — столбик;
+  // подпись (общее время простоя) — только на последней минуте события,
+  // при наведении на любой столбик — период простоя.
   function buildDownColumns(minuteTs, events, seriesData) {
     const markers = [];
     (events || []).forEach((ev) => {
@@ -102,12 +103,15 @@
       const dur = fmtDuration(ev.minutes);
       const text = 'Простой: ' + fmtDT(ev.start) + ' – ' + fmtDT(ev.end) +
         ' · ' + dur;
+      const idxs = [];
       for (let i = 0; i < minuteTs.length; i++) {
         const ts = new Date(minuteTs[i]).getTime();
-        if (ts >= start && ts < end) {
-          markers.push({ idx: i, text: text });
-        }
+        if (ts >= start && ts < end) idxs.push(i);
       }
+      idxs.forEach((idx, j) => {
+        // подпись — только на последнем столбце события (общее время простоя)
+        markers.push({ idx: idx, text: text, label: (j === idxs.length - 1) ? dur : '' });
+      });
     });
     return markers;
   }
@@ -155,12 +159,16 @@
       }
       const dp = tooltip.dataPoints[0];
       const idx = dp.dataIndex;
-      const didx = dp.datasetIndex;
       const pos = ch.canvas.getBoundingClientRect();
       const px = pos.left + tooltip.caretX;
       const py = pos.top + tooltip.caretY;
-      // столбец простоя (красно-чёрный): показываем период простоя
-      if (didx === 1) {
+      // столбец простоя (красно-полосатый, датасет последний): показываем
+      // «Простой» и точный период; ищем его среди всех точек наведения
+      let isDown = false;
+      for (let k = 0; k < tooltip.dataPoints.length; k++) {
+        if (tooltip.dataPoints[k].datasetIndex === st.downIdx()) { isDown = true; break; }
+      }
+      if (isDown) {
         const val = dp.parsed.y || 0;
         const text = st.downTexts[idx] || ('Простой: ' + fmtDuration(val));
         el.innerHTML = '<div class="tt-body"><div class="tt-noimg"><span class="badge text-bg-danger">↓</span></div>' +
@@ -392,7 +400,8 @@
       const di = st.downIdx();
       if (isMinuteChart && di !== -1) {
         // минутный график: минимальные красно-полосатые столбики (1–2 ед.)
-        // на каждой минуте простоя; над каждым — жёлтый «!»
+        // на каждой минуте простоя; подпись (время простоя) — только на
+        // последней минуте события
         const DOWN_MIN_VALUE = 1;
         downData = new Array(data.length).fill(0);
         if (showDown) {
@@ -401,7 +410,7 @@
             if (local >= 0 && local < data.length) {
               downData[local] = DOWN_MIN_VALUE;
               st.downTexts[local] = c.text;
-              st.downLabels[local] = '!';
+              st.downLabels[local] = c.label;
             }
           });
         }
