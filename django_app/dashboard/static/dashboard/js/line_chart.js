@@ -49,6 +49,8 @@
   let downLabels = {};    // idx в видимом окне -> подпись («!»)
   let initialStepDone = false;
   let loading = false;
+  let lastAssignment = null;  // последнее задание из API (для строки статуса)
+  let lastDownTotal = 0;      // суммарные минуты простоя за период
 
   const EMPTY_COLOR = '#e9ecef';
   const codeToDs = {};    // код продукта -> индекс датасета в chart.data.datasets
@@ -131,6 +133,23 @@
       '<td>' + p.name + '</td>' +
       '<td class="text-end fw-semibold">' + Number(p.count).toLocaleString('ru-RU') + '</td></tr>'
     ).join('');
+  }
+
+  // Строка статуса под графиком:
+  //   Код продукта: 005 («Молоко топлёное 4%»). Начало задания 25.08.2026 20:15.
+  //   Изготовлено: 6 шт. Время простоя линии : 8 мин.
+  function renderStatus() {
+    if (!chartStatus) return;
+    let text = '';
+    const a = lastAssignment;
+    if (a) {
+      text = 'Код продукта: ' + (a.product_code || '—') +
+        ' («' + (a.product_name || '') + '»). ' +
+        'Начало задания ' + fmtDT(a.started_at) + '. ' +
+        'Изготовлено: ' + Number(a.total_count || 0).toLocaleString('ru-RU') + ' шт. ';
+    }
+    text += 'Время простоя линии : ' + lastDownTotal + ' мин.';
+    chartStatus.textContent = text;
   }
 
   // ------------------------------------------------------------------
@@ -387,7 +406,7 @@
     currentSeries = slice;
     const maxCount = fullSeries.reduce((mx, s) => Math.max(mx, s.count || 0), 0) || 1;
 
-    // Запас по оси Y: максимум + 20% сверху (самый высокий столбец — ~80% высоты)
+    // Запас по оси Y: максимум + 40% сверху (самый высокий столбец — ~71% высоты)
     chart.options.scales.y.max = window.Molvest3D
       ? Molvest3D.yAxisMax(maxCount)
       : Math.max(1, Math.ceil(maxCount * 1.4));
@@ -436,8 +455,7 @@
     }
     chart.update('none');
     updateProductIndicator();
-    chartStatus.textContent = 'Обновлено: ' + new Date().toLocaleTimeString('ru-RU') +
-      ' · Простоев: ' + downColumns.length;
+    renderStatus();
   }
 
   function createChart() {
@@ -538,14 +556,9 @@
       renderVisible(); // при первой загрузке тоже обновляем индикатор
 
       renderSummary(data.summary);
-      const a = data.assignment;
-      let status = '';
-      if (a) {
-        status = 'Задание: продукт ' + a.product_code + ' («' + a.product_name + '»), с ' + a.started_at +
-          ', изготовлено ' + a.total_count + ' шт. · ';
-      }
-      chartStatus.textContent = status + 'Обновлено: ' + new Date().toLocaleTimeString('ru-RU') +
-        ' · Простоев: ' + downColumns.length;
+      lastAssignment = data.assignment || null;
+      lastDownTotal = (data.downtime || []).reduce((s, e) => s + (e.minutes || 0), 0);
+      renderStatus();
     } catch (e) {
       chartStatus.textContent = 'Ошибка загрузки данных: ' + e.message;
     } finally {

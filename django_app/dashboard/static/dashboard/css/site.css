@@ -415,7 +415,13 @@ table.table {
   flex: none;
   font-variant-numeric: tabular-nums;
 }
-.product-combo-item .combo-name { flex: 1; min-width: 0; }
+.product-combo-item .combo-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .product-combo-item .combo-1c {
   color: #6c757d;
   font-size: .75rem;

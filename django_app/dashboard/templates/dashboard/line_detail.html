@@ -16,10 +16,6 @@
       {{ line.name }}
       <span class="badge text-bg-{{ line.status.1 }}">{{ line.status.0 }}</span>
     </h1>
-    <div class="text-muted small">
-      Цех: {{ line.shop.name }} ·
-      Последние данные: {% if line.last_seen %}{{ line.last_seen|date:'d.m.Y H:i:s' }}{% else %}—{% endif %}
-    </div>
   </div>
 </div>
 
@@ -55,7 +51,7 @@
           <form method="post" action="{% url 'line_switch' line.pk %}" id="switchForm" class="d-flex gap-2 align-items-center flex-wrap">
             {% csrf_token %}
             <label class="form-label mb-0 text-nowrap">Сменить продукт:</label>
-            <div class="product-combo" id="productCombo" style="min-width: 300px; max-width: 420px;">
+            <div class="product-combo" id="productCombo" style="min-width: 450px; max-width: 630px;">
               <input type="hidden" name="product_code" id="productComboValue" value="">
               <input type="text" id="productComboField" class="form-control form-control-sm product-combo-field"
                      value="" placeholder="— выберите продукт —" readonly autocomplete="off">
@@ -181,7 +177,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script src="{% static 'dashboard/js/chart_zoom.js' %}?v=9"></script>
 <script src="{% static 'dashboard/js/chart3d.js' %}?v=15"></script>
-<script src="{% static 'dashboard/js/line_chart.js' %}?v=23"></script>
+<script src="{% static 'dashboard/js/line_chart.js' %}?v=24"></script>
 <script>
 // Выпадающий список смены продукта: открывается по клику на поле,
 // закрывается при выборе или при клике в любом месте страницы.
