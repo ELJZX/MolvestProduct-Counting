@@ -65,7 +65,7 @@
       <button class="btn btn-quick" data-step="10">+10</button>
       <button class="btn btn-quick" data-step="100">+100</button>
     </div>
-    <div class="hint">Клик по карточке выбранной линии насчитывает продукцию. Если продукт отличается от текущего на линии — ключ продукта сменится автоматически (как у реального контроллера).</div>
+    <div class="hint">Клик по карточке выбранной линии насчитывает продукцию текущего продукта линии. Если выбранный продукт отличается от текущего на линии — насчёт не выполнится («Код продукции не соответствует»): симулятор сам код продукта не меняет. Смена кода продукта — только по кнопке «Изменить код» на карточке линии с вводом пин-кода.</div>
   </section>
 </div>
 
@@ -73,6 +73,38 @@
 <section class="lines">
   <div id="linesWrap" class="empty">Выберите хотя бы одну линию слева.</div>
 </section>
+
+<!-- Диалог ввода пин-кода при смене кода продукта -->
+<div class="modal-overlay" id="pinModal" hidden>
+  <div class="modal-box">
+    <div class="modal-title">Смена кода продукта</div>
+    <div class="modal-body">
+      <div class="modal-hint">Введите пин-код для смены кода продукта на линии:</div>
+      <input type="text" id="pinInput" class="pin-input" inputmode="numeric" pattern="[0-9]*"
+             placeholder="• • • •" autocomplete="off" maxlength="10">
+      <div id="pinError" class="modal-error" hidden></div>
+      <div class="modal-hint small">Пин-код по умолчанию: <b>2020</b> (можно изменить в админке системы).</div>
+    </div>
+    <div class="modal-actions">
+      <button id="pinCancel" class="btn">Отмена</button>
+      <button id="pinOk" class="btn btn-primary">Подтвердить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Диалог подтверждения смены кода продукта -->
+<div class="modal-overlay" id="confirmModal" hidden>
+  <div class="modal-box">
+    <div class="modal-title">Подтверждение смены</div>
+    <div class="modal-body">
+      <div id="confirmText" class="confirm-text"></div>
+    </div>
+    <div class="modal-actions">
+      <button id="confirmCancel" class="btn">Отмена</button>
+      <button id="confirmOk" class="btn btn-warning">Да, изменить</button>
+    </div>
+  </div>
+</div>
 
 <footer class="foot">Эмулятор линии · для тестирования MolvestCountingSystem</footer>
 

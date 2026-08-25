@@ -160,16 +160,45 @@ def line_detail(request, pk):
 @login_required
 @role_required('admin', 'operator')
 def line_switch_product(request, pk):
-    """Ручная смена ключа продукта на линии."""
+    """Ручная смена ключа продукта на линии (с подтверждением пин-кодом).
+
+    Двухшаговый Ajax-сценарий:
+      action=verify   — проверка пин-кода, смена ещё не выполняется;
+      action=confirm  — пин-код уже проверен, выполняем смену продукта.
+    При неверном пин-коде (или его отсутствии) возвращается
+    «Операция отклонена», смена не выполняется.
+    """
     line = get_object_or_404(Line, pk=pk)
-    if request.method == 'POST':
-        product_code = (request.POST.get('product_code') or '').strip()
-        try:
-            services.switch_product(line.pk, product_code)
-            messages.success(request, f'Продукт {product_code} установлен на линии.')
-        except ValueError as exc:
-            messages.error(request, str(exc))
+    if request.method != 'POST':
         return redirect('line_detail', pk=line.pk)
+    is_json = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+    product_code = (request.POST.get('product_code') or '').strip()
+    pin = (request.POST.get('pin') or '').strip()
+    action = request.POST.get('action') or 'confirm'
+
+    cfg = SystemConfig.get()
+    expected = (cfg.switch_pin or '').strip() or '2020'
+    if pin != expected:
+        if is_json:
+            return JsonResponse({'ok': False, 'error': 'Операция отклонена'}, status=400)
+        messages.error(request, 'Операция отклонена: неверный пин-код.')
+        return redirect('line_detail', pk=line.pk)
+
+    if action == 'verify':
+        current_code = line.current_product.code if line.current_product else '—'
+        return JsonResponse({'ok': True, 'current_code': current_code,
+                             'new_code': product_code or '—'})
+
+    # action == 'confirm' — выполняем смену
+    try:
+        services.switch_product(line.pk, product_code)
+        if is_json:
+            return JsonResponse({'ok': True, 'message': f'Код продукта изменён на {product_code}.'})
+        messages.success(request, f'Продукт {product_code} установлен на линии.')
+    except ValueError as exc:
+        if is_json:
+            return JsonResponse({'ok': False, 'error': str(exc)}, status=400)
+        messages.error(request, str(exc))
     return redirect('line_detail', pk=line.pk)
 
 
@@ -204,7 +233,6 @@ def reports_page(request):
             # Актуальность файла: дата и время последнего редактирования
             if info.get('modified'):
                 label += (f' · обновлён {info["modified"].strftime("%d.%m.%Y %H:%M")}')
-            label += f' · файлов: {len(info["files"])}'
             counters_json.append({
                 'id': code,
                 'name': f'Счётчик {code}',

@@ -1,9 +1,18 @@
 /* Диаграмма линии в реальном времени.
    Загружается весь период с момента смены ключа продукта (или последние 120
    минут, если задания нет). По умолчанию — окно 10 минут, обновление каждую
-   минуту и по SSE-событию. Кнопка «Весь период» показывает весь загруженный
-   период. Простои отображаются одним красно-чёрным столбцом на минуте
-   возобновления фасовки; при наведении — диалог с периодом простоя. */
+   секунду и по SSE-событию. Кнопка «Весь период» показывает весь загруженный
+   период.
+
+   Особенности:
+   - если за минуту было несколько смен кода продукта, столбец делится на
+     цветные сегменты (по одному датасету на продукт в стеке);
+   - индикатор «Продукция, шт/мин» показывает ВСЕ цвета/коды продуктов,
+     которые видны на выбранном отрезке;
+   - простои — минимальные красно-полосатые столбики (1–2 ед.) на каждой
+     минуте простоя, над каждым — жёлтый «!»; при наведении — период простоя;
+   - при максимальном уменьшении («Весь период») чёрная окантовка столбиков
+     убирается, чтобы не чернить график. */
 (function () {
   'use strict';
 
@@ -23,21 +32,26 @@
   const rangeTotal = $('rangeTotal');
   const summaryBody = $('summaryBody');
   const chartStatus = $('chartStatus');
+  const swatchesEl = $('prodSwatches');
 
   const FALLBACK_MINUTES = 120; // если задания нет — окно 2 часа
   const DEFAULT_STEP = 0;       // индекс шага в MolvestZoom: 10 минут
+  const POLL_MS = 1000;         // обновление раз в секунду (реальное время)
+  const DOWN_MIN_VALUE = 1;     // минимальная отрисовка простоя (1–2 ед.)
 
   let chart = null;
   let zoomApi = null;
   let productsMap = {};
   let fullSeries = [];
   let currentSeries = [];
-  let downColumns = [];   // [{idx, label, text}] — маркеры простоя
+  let downColumns = [];   // [{idx, text}] — маркеры простоя
   let downTexts = {};     // idx в видимом окне -> текст подсказки
-  let downLabels = {};    // idx в видимом окне -> подпись («!» или итог простоя)
+  let downLabels = {};    // idx в видимом окне -> подпись («!»)
   let initialStepDone = false;
+  let loading = false;
 
   const EMPTY_COLOR = '#e9ecef';
+  const codeToDs = {};    // код продукта -> индекс датасета в chart.data.datasets
 
   // Паттерн «красный с чёрными полосками» для столбцов простоя
   const _patternCanvas = document.createElement('canvas');
@@ -93,6 +107,19 @@
       'T' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
   }
 
+  // С секундами — чтобы ряд включал текущую (неполную) минуту
+  function toLocalInputSec(dt) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate()) +
+      'T' + pad(dt.getHours()) + ':' + pad(dt.getMinutes()) + ':' + pad(dt.getSeconds());
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   function renderSummary(summary) {
     rangeTotal.textContent = 'Всего за период: ' + (summary.total || 0).toLocaleString('ru-RU') + ' шт.';
     if (!summary.per_product || !summary.per_product.length) {
@@ -107,8 +134,8 @@
   }
 
   // ------------------------------------------------------------------
-  // Маркеры простоя: на каждую минуту простоя — жёлтый «!», на последней
-  // минуте события — общее время простоя.
+  // Маркеры простоя: на каждую минуту простоя — точка с текстом периода
+  // (столбик рисуется минимальной высоты, над ним — жёлтый «!»)
   // ------------------------------------------------------------------
   function buildDownColumns(series, events) {
     const markers = [];
@@ -118,19 +145,12 @@
       const dur = fmtDuration(ev.minutes);
       const text = 'Простой: ' + fmtDT(ev.start) + ' – ' + fmtDT(ev.end) +
         ' · ' + dur;
-      const idxs = [];
       for (let i = 0; i < series.length; i++) {
         const ts = new Date(series[i].ts).getTime();
-        if (ts >= start && ts < end) idxs.push(i);
+        if (ts >= start && ts < end) {
+          markers.push({ idx: i, text: text });
+        }
       }
-      if (!idxs.length) return;
-      idxs.forEach((idx, j) => {
-        markers.push({
-          idx: idx,
-          label: (j === idxs.length - 1) ? dur : '!',
-          text: text,
-        });
-      });
     });
     return markers;
   }
@@ -171,11 +191,17 @@
     el.style.opacity = '1';
   }
 
+  // Части минуты (продукты) для точки ряда; при отсутствии parts —
+  // единственный продукт точки
+  function partsOf(s) {
+    if (s.parts && s.parts.length) return s.parts;
+    if (s.product_code) return [{ code: s.product_code, name: s.product_name, count: s.count }];
+    return [];
+  }
+
   function tooltipHandler(context) {
     const { chart: ch, tooltip } = context;
     const el = ensureTooltipEl();
-    // Не полагаемся на tooltip.opacity (при animation:false он может не меняться):
-    // показываем, когда есть активные точки и позиция курсора
     if (!tooltip.dataPoints || !tooltip.dataPoints.length ||
         !Number.isFinite(tooltip.caretX) || !Number.isFinite(tooltip.caretY)) {
       hideTooltip();
@@ -185,7 +211,7 @@
     const pos = ch.canvas.getBoundingClientRect();
     const px = pos.left + tooltip.caretX;
     const py = pos.top + tooltip.caretY;
-    // простои: hover по красно-чёрному столбцу
+    // простои: hover по красно-полосатому столбцу
     if (downTexts[idx]) {
       el.innerHTML = '<div class="tt-body"><div class="tt-noimg"><span class="badge text-bg-danger">↓</span></div>' +
         '<div class="tt-text"><div class="tt-count text-danger">Простой</div>' +
@@ -195,92 +221,165 @@
     }
     const s = currentSeries[idx];
     if (!s) { hideTooltip(); return; }
-    if (s.count === undefined && !s.product_code) { hideTooltip(); return; }
-    const p = s.product_code ? (productsMap[s.product_code] || null) : null;
-    const countHtml = '<div class="tt-count">' + Number(s.count).toLocaleString('ru-RU') + ' шт.</div>';
+    const parts = partsOf(s);
+    if (!parts.length && s.count === undefined) { hideTooltip(); return; }
+    const totalHtml = '<div class="tt-count">' + Number(s.count || 0).toLocaleString('ru-RU') + ' шт.</div>';
     const timeHtml = '<div class="tt-time">' + fmtTs(s.ts) + '</div>';
+    if (parts.length > 1) {
+      // Несколько продуктов в одной минуте: общее кол-во, ниже дата/время,
+      // ниже — по каждому продукту цветной код (цвет продукта) и его кол-во
+      const rows = parts.map((p) => {
+        const prod = productsMap[p.code] || null;
+        return '<div class="tt-part">' +
+          '<span class="product-chip" style="background:' + ((prod && prod.color) || '#6c757d') + '">' + p.code + '</span>' +
+          '<span class="tt-part-count">' + Number(p.count || 0).toLocaleString('ru-RU') + ' шт.</span>' +
+          '</div>';
+      }).join('');
+      el.innerHTML = '<div class="tt-body tt-body-col">' +
+        '<div class="tt-text">' + totalHtml + timeHtml +
+        '<div class="tt-parts">' + rows + '</div></div></div>';
+      placeTooltip(el, px, py);
+      return;
+    }
+    const p = parts[0] ? (productsMap[parts[0].code] || null) : null;
+    const code = parts[0] ? parts[0].code : s.product_code;
     let imgHtml;
     if (p && p.image) {
       imgHtml = '<img class="tt-img" src="' + p.image + '" alt="">';
-    } else if (p) {
-      imgHtml = '<div class="tt-noimg"><span class="badge text-bg-dark">' + (s.product_code || '—') + '</span></div>';
+    } else if (code) {
+      imgHtml = '<div class="tt-noimg"><span class="badge text-bg-dark">' + code + '</span></div>';
     } else {
       imgHtml = '<div class="tt-noimg"><span class="badge text-bg-secondary">—</span></div>';
     }
-    const nameHtml = p ? '<div class="tt-name">' + p.name + '</div>' : '<div class="tt-name text-muted">нет данных о продукте</div>';
-    const codeHtml = s.product_code ? '<div class="tt-1c">Код продукта: ' + s.product_code + '</div>' : '';
-    const code1cHtml = p ? '<div class="tt-1c">Код 1С: ' + (p.code_1c || '—') + '</div>' : '';
+    const nameHtml = p ? '<div class="tt-name">' + escapeHtml(p.name) + '</div>'
+                       : '<div class="tt-name text-muted">нет данных о продукте</div>';
+    const codeHtml = code ? '<div class="tt-1c">Код продукта: ' + code + '</div>' : '';
+    const code1cHtml = p ? '<div class="tt-1c">Код 1С: ' + escapeHtml(p.code_1c || '—') + '</div>' : '';
     el.innerHTML = '<div class="tt-body">' + imgHtml +
-      '<div class="tt-text">' + countHtml + timeHtml + nameHtml + codeHtml + code1cHtml + '</div></div>';
+      '<div class="tt-text">' + totalHtml + timeHtml + nameHtml + codeHtml + code1cHtml + '</div></div>';
     placeTooltip(el, px, py);
   }
 
   // ------------------------------------------------------------------
-  // Отрисовка видимого окна
+  // Индикатор «Продукция, шт/мин»: ВСЕ цвета и коды продуктов,
+  // видимые на выбранном отрезке (2, 3, 4 цвета — все отображаются)
   // ------------------------------------------------------------------
-  // Доминирующий продукт в видимом окне (по сумме кол-ва за минуты)
-  function dominantProduct(slice) {
-    const sums = {};
-    slice.forEach((s) => {
-      if (s.product_code) sums[s.product_code] = (sums[s.product_code] || 0) + (s.count || 0);
-    });
-    let best = null;
-    let bestSum = -1;
-    Object.keys(sums).forEach((code) => {
-      if (sums[code] > bestSum) { best = code; bestSum = sums[code]; }
-    });
-    return best;
-  }
-
-  // Индикатор «Продукция, шт/мин»: цвет и код продукта в поле зрения по оси X
-  const prodSwatch = $('prodLegendSwatch');
-  let dominantCode = null;
-
   function updateProductIndicator() {
-    if (!prodSwatch) return;
-    dominantCode = dominantProduct(currentSeries);
-    if (dominantCode) {
-      const p = productsMap[dominantCode] || null;
-      prodSwatch.style.background = (p && p.color) ? p.color : '#adb5bd';
-      prodSwatch.textContent = dominantCode;
-    } else {
-      prodSwatch.style.background = '#adb5bd';
-      prodSwatch.textContent = '—';
+    try {
+      if (!swatchesEl) return;
+      const seen = new Map();
+      currentSeries.forEach((s) => {
+        partsOf(s).forEach((p) => {
+          if (!p || !p.code || seen.has(p.code)) return;
+          const prod = productsMap[p.code] || null;
+          seen.set(p.code, {
+            color: (prod && prod.color) ? prod.color : '#adb5bd',
+            name: (prod && prod.name) || p.name || '',
+          });
+        });
+      });
+      const codes = Array.from(seen.keys())
+        .sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0) || a.localeCompare(b));
+      swatchesEl.innerHTML = codes.length
+        ? codes.map((code) =>
+            '<span class="prod-legend-swatch" data-code="' + code + '" title="' +
+            escapeHtml(seen.get(code).name || code) + '" style="background:' +
+            seen.get(code).color + '">' + code + '</span>'
+          ).join('')
+        : '<span class="prod-legend-swatch" style="background:#adb5bd">—</span>';
+      // подсказка при наведении на каждый чип
+      Array.prototype.forEach.call(swatchesEl.querySelectorAll('.prod-legend-swatch'), (chip) => {
+        chip.addEventListener('mouseenter', () => showProductTip(chip.dataset.code));
+        chip.addEventListener('mouseleave', hideProductTip);
+      });
+    } catch (e) {
+      // индикатор декоративный — сбой не должен ломать отрисовку графика
     }
   }
 
-  function showProductTip(ev) {
-    if (!dominantCode) return;
-    const p = productsMap[dominantCode] || null;
+  function hideProductTip() {
+    hideTooltip();
+  }
+
+  function showProductTip(code) {
+    if (!code) return;
+    const p = productsMap[code] || null;
     if (!p) return;
     const el = ensureTooltipEl();
     let imgHtml;
     if (p.image) {
       imgHtml = '<img class="tt-img" src="' + p.image + '" alt="">';
     } else {
-      imgHtml = '<div class="tt-noimg"><span class="product-chip" style="background:' + (p.color || '#adb5bd') + '">' + dominantCode + '</span></div>';
+      imgHtml = '<div class="tt-noimg"><span class="product-chip" style="background:' + (p.color || '#adb5bd') + '">' + code + '</span></div>';
     }
     el.innerHTML = '<div class="tt-body">' + imgHtml +
       '<div class="tt-text">' +
-      '<div class="tt-count">Продукт ' + dominantCode + '</div>' +
-      '<div class="tt-name">' + p.name + '</div>' +
-      '<div class="tt-1c">Код 1С: ' + (p.code_1c || '—') + '</div>' +
+      '<div class="tt-count">Продукт ' + code + '</div>' +
+      '<div class="tt-name">' + escapeHtml(p.name) + '</div>' +
+      '<div class="tt-1c">Код 1С: ' + escapeHtml(p.code_1c || '—') + '</div>' +
       '<div class="tt-1c">Цвет: <span style="color:' + (p.color || '#fff') + '">' + (p.color || '—') + '</span></div>' +
       '</div></div>';
-    const pos = prodSwatch.getBoundingClientRect();
+    const chip = swatchesEl ? swatchesEl.querySelector('.prod-legend-swatch[data-code="' + code + '"]') : null;
+    const pos = chip ? chip.getBoundingClientRect() : { left: 0, top: 0 };
     placeTooltip(el, pos.left, pos.top);
   }
 
-  function hideProductTip() {
-    const el = document.getElementById('chart-tooltip');
-    if (el) el.style.opacity = '0';
+  // ------------------------------------------------------------------
+  // Датасеты: по одному на продукт (стек) + датасет простоя (последний)
+  // ------------------------------------------------------------------
+  function downDsIndex() {
+    if (!chart) return -1;
+    for (let i = 0; i < chart.data.datasets.length; i++) {
+      if (chart.data.datasets[i]._down) return i;
+    }
+    return -1;
   }
 
-  if (prodSwatch) {
-    prodSwatch.addEventListener('mouseenter', showProductTip);
-    prodSwatch.addEventListener('mouseleave', hideProductTip);
+  function syncProductDatasets() {
+    if (!chart) return;
+    const codes = new Set();
+    fullSeries.forEach((s) => {
+      partsOf(s).forEach((p) => { if (p && p.code) codes.add(p.code); });
+    });
+    // удаляем датасеты продуктов, которых больше нет
+    chart.data.datasets = chart.data.datasets.filter((ds) => {
+      if (ds._down) return true;
+      if (ds._code && codes.has(ds._code)) return true;
+      delete codeToDs[ds._code];
+      return false;
+    });
+    // добавляем новые (перед датасетом простоя)
+    let insertIdx = downDsIndex();
+    if (insertIdx === -1) insertIdx = chart.data.datasets.length;
+    const sorted = Array.from(codes)
+      .sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0) || a.localeCompare(b));
+    sorted.forEach((code) => {
+      if (code in codeToDs) return;
+      const p = productsMap[code] || null;
+      const ds = {
+        label: 'Продукт ' + code,
+        _code: code,
+        data: [],
+        backgroundColor: (p && p.color) ? p.color : EMPTY_COLOR,
+        borderWidth: 0,
+        borderRadius: 0,
+        barPercentage: 1.0,
+        categoryPercentage: 1.0,
+        stack: 'main',
+      };
+      chart.data.datasets.splice(insertIdx, 0, ds);
+      insertIdx += 1;
+    });
+    // пересчёт индексов
+    Object.keys(codeToDs).forEach((k) => delete codeToDs[k]);
+    chart.data.datasets.forEach((ds, i) => {
+      if (!ds._down && ds._code) codeToDs[ds._code] = i;
+    });
   }
 
+  // ------------------------------------------------------------------
+  // Отрисовка видимого окна
+  // ------------------------------------------------------------------
   function renderVisible() {
     if (!chart) return;
     const w = zoomApi ? zoomApi.getWindow() : { min: 0, max: Math.max(0, fullSeries.length - 1) };
@@ -293,7 +392,12 @@
       ? Molvest3D.yAxisMax(maxCount)
       : Math.max(1, Math.ceil(maxCount * 1.4));
 
-    // данные простоя для видимого окна: жёлтый маркер на каждую минуту
+    // Чёрная окантовка столбиков — только в оконном режиме; при
+    // максимальном уменьшении («Весь период») убираем, чтобы не чернить график
+    chart.options.plugins.molvest3d.outline = zoomApi ? !zoomApi.isFullPeriod() : true;
+
+    // Данные простоя: минимальные столбики (1–2 ед.) на каждой минуте
+    // простоя; над каждым — жёлтый «!»; при наведении — период простоя
     const downData = new Array(slice.length).fill(0);
     downTexts = {};
     downLabels = {};
@@ -303,40 +407,115 @@
       downColumns.forEach((c) => {
         const local = c.idx - w.min;
         if (local >= 0 && local < slice.length) {
-          downData[local] = maxCount;
+          downData[local] = DOWN_MIN_VALUE;
           downTexts[local] = c.text;
-          downLabels[local] = c.label;
+          downLabels[local] = '!';
         }
       });
     }
-    // Даже при выключенном простоях датасет остаётся (нули) — ширина столбцов
-    // продукции не меняется (нет перерасчёта раскладки)
+
+    // Данные по продуктам (сегменты одного столбца)
+    Object.keys(codeToDs).forEach((code) => {
+      const ds = chart.data.datasets[codeToDs[code]];
+      if (!ds) return;
+      ds.data = slice.map((s) => {
+        const parts = s.parts || [];
+        for (let i = 0; i < parts.length; i++) {
+          if (parts[i].code === code) return parts[i].count || 0;
+        }
+        return 0;
+      });
+    });
 
     chart.data.labels = slice.map((s) => s.minute);
-    chart.data.datasets[0].data = slice.map((s) => s.count);
-    chart.data.datasets[0].backgroundColor = slice.map((s) => {
-      const p = s.product_code ? productsMap[s.product_code] : null;
-      return p && p.color ? p.color : EMPTY_COLOR;
-    });
-    chart.data.datasets[1].data = downData;
+    const di = downDsIndex();
+    if (di !== -1) {
+      chart.data.datasets[di].data = downData;
+      chart.data.datasets[di].backgroundColor = stripesPattern;
+      chart.data.datasets[di].borderWidth = 0;
+    }
     chart.update('none');
     updateProductIndicator();
     chartStatus.textContent = 'Обновлено: ' + new Date().toLocaleTimeString('ru-RU') +
       ' · Простоев: ' + downColumns.length;
   }
 
-  async function loadChart() {
-    const to = new Date();
-    let from;
-    if (assignmentStartRaw) {
-      from = new Date(assignmentStartRaw);
-      if (isNaN(from.getTime())) from = new Date(to.getTime() - FALLBACK_MINUTES * 60000);
-    } else {
-      from = new Date(to.getTime() - FALLBACK_MINUTES * 60000);
+  function createChart() {
+    const ctx = $('lineChart').getContext('2d');
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: [],
+        datasets: [
+          // датасеты продуктов добавляются динамически (syncProductDatasets);
+          // датасет простоя всегда последний
+          { label: 'Простой', data: [], _down: true, backgroundColor: stripesPattern,
+            borderWidth: 0, borderRadius: 0,
+            barPercentage: 1.0, categoryPercentage: 1.0, stack: 'main', molvest3d: false },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        plugins: {
+          // Легенда скрыта: вместо неё — чекбокс «Отображать график простоя»
+          legend: { display: false },
+          tooltip: { enabled: false, external: tooltipHandler },
+          // 3D-столбцы (только для продукции; простой — плоские столбики)
+          molvest3d: { enabled: true, depth: 9, outline: true },
+          // Жёлтый «!» над каждым столбиком простоя
+          datalabels: {
+            display: (ctx) => ctx.datasetIndex === downDsIndex() && !!downLabels[ctx.dataIndex],
+            color: '#ffc107',
+            textStrokeColor: 'rgba(0,0,0,0.85)',
+            textStrokeWidth: 1.5,
+            anchor: 'end',
+            align: 'end',
+            offset: 1,
+            font: { weight: 'bold', size: 12 },
+            formatter: (value, ctx) => downLabels[ctx.dataIndex] || '',
+          },
+        },
+        scales: {
+          x: {
+            stacked: true,
+            grid: { display: false },
+            ticks: { maxTicksLimit: 14, maxRotation: 0, autoSkip: true },
+          },
+          y: {
+            stacked: true,
+            beginAtZero: true,
+            ticks: { precision: 0 },
+            title: { display: true, text: 'шт./мин' },
+          },
+        },
+      },
+    });
+    if (window.MolvestZoom) {
+      zoomApi = MolvestZoom.attach(chart, {
+        container: $('lineChartZoom'),
+        onWindow: () => renderVisible(),
+      });
     }
-    const url = '/api/v1/lines/' + lineId + '/chart/?from=' + encodeURIComponent(toLocalInput(from)) +
-      '&to=' + encodeURIComponent(toLocalInput(to));
+    // курсор ушёл с холста — подсказка скрывается
+    chart.canvas.addEventListener('mouseleave', hideTooltip);
+  }
+
+  async function loadChart() {
+    if (loading) return; // не запускаем повторный запрос, пока идёт текущий
+    loading = true;
     try {
+      const to = new Date();
+      let from;
+      if (assignmentStartRaw) {
+        from = new Date(assignmentStartRaw);
+        if (isNaN(from.getTime())) from = new Date(to.getTime() - FALLBACK_MINUTES * 60000);
+      } else {
+        from = new Date(to.getTime() - FALLBACK_MINUTES * 60000);
+      }
+      const url = '/api/v1/lines/' + lineId + '/chart/?from=' + encodeURIComponent(toLocalInput(from)) +
+        '&to=' + encodeURIComponent(toLocalInputSec(to));
       const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
@@ -348,62 +527,8 @@
       productsMap = data.products || {};
       downColumns = buildDownColumns(fullSeries, data.downtime || []);
 
-      if (!chart) {
-        const ctx = $('lineChart').getContext('2d');
-        chart = new Chart(ctx, {
-          type: 'bar',
-          data: {
-            labels: [],
-            datasets: [
-              { label: 'Продукция, шт/мин', data: [], backgroundColor: [], borderWidth: 0, borderRadius: 0,
-                barPercentage: 1.0, categoryPercentage: 1.0, stack: 'main' },
-              { label: 'Простой', data: [], backgroundColor: '#ffc107', borderWidth: 1, borderColor: 'rgba(0,0,0,0.7)', borderRadius: 0,
-                barPercentage: 1.0, categoryPercentage: 1.0, stack: 'main', molvest3d: false },
-            ],
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: false,
-            plugins: {
-              // Легенда скрыта: вместо неё — чекбокс «Отображать график простоя»
-              legend: { display: false },
-              tooltip: { enabled: false, external: tooltipHandler },
-              // 3D-столбцы (только для продукции; простой — плоские жёлтые маркеры)
-              molvest3d: { enabled: true, depth: 9 },
-              // Жёлтый «!» на каждой минуте простоя; итог — на последней минуте
-              datalabels: {
-                display: (ctx) => ctx.datasetIndex === 1 && !!downLabels[ctx.dataIndex],
-                color: '#6b4e00',
-                anchor: 'end',
-                align: 'end',
-                offset: -1,
-                font: { weight: 'bold', size: 9 },
-                formatter: (value, ctx) => downLabels[ctx.dataIndex] || '',
-              },
-            },
-            scales: {
-              x: {
-                grid: { display: false },
-                ticks: { maxTicksLimit: 14, maxRotation: 0, autoSkip: true },
-              },
-              y: {
-                beginAtZero: true,
-                ticks: { precision: 0 },
-                title: { display: true, text: 'шт./мин' },
-              },
-            },
-          },
-        });
-        if (window.MolvestZoom) {
-          zoomApi = MolvestZoom.attach(chart, {
-            container: $('lineChartZoom'),
-            onWindow: () => renderVisible(),
-          });
-        }
-        // курсор ушёл с холста — подсказка скрывается
-        chart.canvas.addEventListener('mouseleave', hideTooltip);
-      }
+      if (!chart) createChart();
+      syncProductDatasets();
 
       if (zoomApi) zoomApi.setData(fullSeries.length);
       if (!initialStepDone && zoomApi && fullSeries.length > 0) {
@@ -423,11 +548,13 @@
         ' · Простоев: ' + downColumns.length;
     } catch (e) {
       chartStatus.textContent = 'Ошибка загрузки данных: ' + e.message;
+    } finally {
+      loading = false;
     }
   }
 
   // ------------------------------------------------------------------
-  // Реальное время: SSE + опрос раз в минуту
+  // Реальное время: SSE + опрос раз в секунду
   // ------------------------------------------------------------------
   function connectEvents() {
     let es;
@@ -448,7 +575,7 @@
     };
   }
 
-  setInterval(loadChart, 60000);
+  setInterval(loadChart, POLL_MS);
 
   // Переключатель «Отображать график простоя» — перерисовка без изменения
   // ширины столбцов (датасет простоя остаётся в раскладке)

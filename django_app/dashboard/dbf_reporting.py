@@ -11,7 +11,6 @@
 без изменений.
 """
 import datetime
-import os
 
 from django.utils import timezone
 
@@ -237,6 +236,7 @@ def _chart_day(paths, from_dt, to_dt, pmap):
                       'data': [s['count'] for s in series]}],
         'details': details,
         'colors': [d['color'] for d in details],
+        'products': pmap,
         'minute_ts': [s['ts'] for s in series],
         'downtime': [
             {
@@ -289,6 +289,7 @@ def _chart_month(paths, from_dt, to_dt, pmap):
                       'data': [by_day[d]['count'] for d in days]}],
         'details': details,
         'colors': [d['color'] for d in details],
+        'products': pmap,
         # минуты простоя по дням (столбики второго датасета)
         'downtime_by_day': [dt_by_day.get(d, 0) for d in days],
     }

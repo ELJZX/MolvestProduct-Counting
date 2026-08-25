@@ -77,10 +77,6 @@ class Shop(models.Model):
         return self.lines.count()
 
     @property
-    def lines_active(self):
-        return self.lines.filter(is_active=True).count()
-
-    @property
     def lines_in_work(self):
         """Линии, у которых открыто задание (идёт производство)."""
         return self.lines.filter(
@@ -196,7 +192,14 @@ class Line(models.Model):
 
 
 class ProductionRecord(models.Model):
-    """Количество продукции на линии за одну минуту (столбик диаграммы)."""
+    """Количество продукции на линии за одну минуту (столбик диаграммы).
+
+    Одна минута может содержать несколько записей — по одной на каждое
+    задание (продукт): если в течение минуты произошло несколько смен кода
+    продукта, каждая часть минуты фиксируется отдельной записью, чтобы ни
+    одно показание не терялось (столбец диаграммы делится на сегменты по
+    цветам продуктов).
+    """
 
     line = models.ForeignKey(
         Line, on_delete=models.CASCADE, related_name='records',
@@ -213,7 +216,8 @@ class ProductionRecord(models.Model):
         ordering = ['minute_start']
         constraints = [
             models.UniqueConstraint(
-                fields=['line', 'minute_start'], name='uniq_line_minute',
+                fields=['line', 'minute_start', 'assignment'],
+                name='uniq_line_minute_assignment',
             ),
         ]
         indexes = [
@@ -317,6 +321,11 @@ class SystemConfig(models.Model):
     data_source = models.CharField(
         'Источник данных для отчётов', max_length=10,
         choices=DATA_SOURCE_CHOICES, default=DATA_SOURCE_DB,
+    )
+    switch_pin = models.CharField(
+        'Пин-код смены продукта', max_length=10, default='2020',
+        help_text='Пин-код, который оператор вводит при смене кода продукта '
+                  'на линии (только цифры). По умолчанию: 2020.',
     )
     dbf_dir = models.CharField(
         'Папка с файлами DBF', max_length=500, blank=True,

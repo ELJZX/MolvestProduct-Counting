@@ -21,7 +21,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import services
-from .models import Line, Product
+from .models import Line, Product, SystemConfig
 
 
 class ControllerKeyPermission(BasePermission):
@@ -252,6 +252,53 @@ class SimProductsView(APIView):
             for p in Product.objects.all().order_by('code')
         ]
         return Response({'ok': True, 'products': products})
+
+
+class SimSwitchView(APIView):
+    """Смена кода продукта на линии из сервиса-эмулятора.
+
+    POST /api/v1/sim/switch/  {"controller_id": ..., "product_code": ...,
+                               "pin": ...}
+
+    Смена выполняется ТОЛЬКО по явной команде пользователя (кнопка
+    «Изменить код продукта» с вводом пин-кода). Сам симулятор код продукта
+    не меняет. Доступ по X-API-Key, как у контроллеров ОВЕН.
+    """
+
+    authentication_classes = []
+    permission_classes = [ControllerKeyPermission]
+
+    def post(self, request):
+        data = request.data or {}
+        controller_id = data.get('controller_id') or data.get('line')
+        product_code = data.get('product') or data.get('product_code')
+        pin = str(data.get('pin') or '').strip()
+        action = str(data.get('action') or 'confirm').strip()
+        if not controller_id or not product_code:
+            return Response({'ok': False, 'error': 'Укажите линию и код продукта.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        cfg = SystemConfig.get()
+        expected = (cfg.switch_pin or '').strip() or '2020'
+        if pin != expected:
+            return Response({'ok': False, 'error': 'Операция отклонена'},
+                            status=status.HTTP_403_FORBIDDEN)
+        line = (Line.objects.filter(controller_id=str(controller_id)).first()
+                or (Line.objects.filter(pk=controller_id).first()
+                    if str(controller_id).isdigit() else None))
+        if line is None:
+            return Response({'ok': False, 'error': f'Линия с controller_id={controller_id!r} не найдена.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if action == 'verify':
+            # Шаг 1: пин-код верный — возвращаем текущий код (смена ещё не выполняется)
+            current_code = line.current_product.code if line.current_product else '—'
+            return Response({'ok': True, 'current_code': current_code,
+                             'new_code': product_code})
+        try:
+            result = services.switch_product(line.pk, product_code)
+        except ValueError as exc:
+            return Response({'ok': False, 'error': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({'ok': True, **result})
 
 
 # ---------------------------------------------------------------------------

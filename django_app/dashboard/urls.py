@@ -46,5 +46,6 @@ urlpatterns = [
     path('api/v1/downtime/chart/', api.DowntimeChartView.as_view(), name='api-downtime-chart'),
     path('api/v1/sim/lines/', api.SimLinesView.as_view(), name='api-sim-lines'),
     path('api/v1/sim/products/', api.SimProductsView.as_view(), name='api-sim-products'),
+    path('api/v1/sim/switch/', api.SimSwitchView.as_view(), name='api-sim-switch'),
     path('api/v1/health/', api.HealthView.as_view(), name='api-health'),
 ]

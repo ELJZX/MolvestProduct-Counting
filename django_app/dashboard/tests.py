@@ -1,3 +1,2 @@
-from django.test import TestCase
-
-# Create your tests here.
+# Тесты приложения dashboard.
+# Пока тестов нет — тесты создаются здесь по мере необходимости.

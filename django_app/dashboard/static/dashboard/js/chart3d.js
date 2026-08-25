@@ -48,16 +48,6 @@
     return 'rgb(' + nr + ',' + ng + ',' + nb + ')';
   }
 
-  // «Красивое» округление вверх: 1/2/5 × 10^k
-  function niceCeil(v) {
-    if (!(v > 0)) return 1;
-    var exp = Math.floor(Math.log10(v));
-    var base = Math.pow(10, exp);
-    var n = v / base;
-    var nice = n <= 1 ? 1 : (n <= 2 ? 2 : (n <= 5 ? 5 : 10));
-    return nice * base;
-  }
-
   // Максимум оси Y: значение + 40% запаса сверху (самый высокий столбец — ~71% высоты)
   function yAxisMax(max) {
     if (!(max > 0)) return 1;
@@ -65,7 +55,7 @@
   }
 
   // Рисует один 3D-столбец. x — центр столбца, top/bottom — пиксели (canvas: y вниз)
-  function draw3DBar(ctx, x, top, bottom, w, color, depth) {
+  function draw3DBar(ctx, x, top, bottom, w, color, depth, outline) {
     if (bottom - top < 1 || w < 1) return;
     var d = Math.max(3, Math.min(depth || 8, w * 1.2));
     var dx = d * 0.75;
@@ -101,10 +91,11 @@
     ctx.fillRect(x - w / 2, top, w, bottom - top);
 
     // тонкая чёрная окантовка по периметру столбца (чтобы слипшиеся
-    // столбики были визуально различимы). Для очень узких столбцов
-    // (максимальное уменьшение, «Весь период») окантовку не рисуем —
-    // иначе график становится чёрным.
-    if (w >= 3) {
+    // столбики были визуально различимы). Окантовку можно отключить
+    // (opts.outline === false) — при максимальном уменьшении графика
+    // («Весь период»), когда столбики очень узкие, окантовка только
+    // чернит график.
+    if (outline !== false && w >= 3) {
       ctx.strokeStyle = 'rgba(0,0,0,.75)';
       ctx.lineWidth = 1;
       // фронтальная грань
@@ -122,7 +113,7 @@
 
   var plugin = {
     id: 'molvest3d',
-    defaults: { enabled: false, depth: 8 },
+    defaults: { enabled: false, depth: 8, outline: true },
 
     afterDatasetDraw: function (chart, args, opts) {
       var dataset = chart.data.datasets[args.index];
@@ -134,6 +125,7 @@
       var meta = args.meta;
       var ctx = chart.ctx;
       var depth = o.depth || 8;
+      var outline = o.outline;
       var elems = meta.data || [];
       for (var i = 0; i < elems.length; i++) {
         var el = elems[i];
@@ -144,7 +136,7 @@
         if (top === bottom) continue; // нулевое значение — 3D не рисуем
         var w = Math.max(1, el.width || 8);
         var color = (el.options && el.options.backgroundColor) || '#6c757d';
-        draw3DBar(ctx, x, top, bottom, w, color, depth);
+        draw3DBar(ctx, x, top, bottom, w, color, depth, outline);
       }
     },
 
@@ -152,9 +144,12 @@
     // столбиков: при вплотную стоящих столбцах обычная обводка каждого
     // столбика перекрывается соседним. Здесь проходим по всем датасетам
     // (продукция + простой) и обводим левую/правую/нижнюю грани.
-    // Для очень узких столбцов (максимальное уменьшение, «Весь период»)
-    // окантовку не рисуем — иначе график становится чёрным.
+    // Окантовку можно отключить (opts.outline === false) — при максимальном
+    // уменьшении графика («Весь период») она не рисуется, чтобы не чернить
+    // график.
     afterDatasetsDraw: function (chart) {
+      var o = (chart.options && chart.options.plugins && chart.options.plugins.molvest3d) || {};
+      if (o.outline === false) return;
       var ctx = chart.ctx;
       ctx.save();
       ctx.strokeStyle = 'rgba(0,0,0,.85)';
@@ -188,7 +183,6 @@
     plugin: plugin,
     draw3DBar: draw3DBar,
     shade: shade,
-    niceCeil: niceCeil,
     yAxisMax: yAxisMax,
     hexToRgb: hexToRgb,
   };

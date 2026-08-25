@@ -274,11 +274,18 @@
       return { min: state.minIdx, max: state.maxIdx, length: state.length };
     }
 
+    // Показывается ли сейчас весь период целиком (максимальное уменьшение).
+    // Используется для отключения чёрной окантовки столбиков.
+    function isFullPeriod() {
+      return state.stepIdx < 0;
+    }
+
     chart._molvestZoom = {
       setData: setData,
       reset: reset,
       getWindow: getWindow,
       setStep: setStep,
+      isFullPeriod: isFullPeriod,
     };
     return chart._molvestZoom;
   }

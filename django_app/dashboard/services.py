@@ -2,7 +2,6 @@
 построение минутных рядов и данных для отчётов.
 """
 import datetime
-from collections import OrderedDict
 
 from django.db import transaction
 from django.db.models import Q, Sum
@@ -17,6 +16,18 @@ MAX_CHART_MINUTES = 7 * 24 * 60  # максимум 7 дней на диагра
 def floor_minute(dt):
     """Начало минуты в локальном времени предприятия (aware datetime)."""
     local = timezone.localtime(dt)
+    return local.replace(second=0, microsecond=0)
+
+
+def ceil_minute(dt):
+    """Потолок до минуты: 08:30:45 -> 08:31, 08:30:00 -> 08:30.
+
+    Нужен, чтобы минутный ряд включал текущую (неполную) минуту —
+    подсчёт в реальном времени.
+    """
+    local = timezone.localtime(dt)
+    if local.second or local.microsecond:
+        return (local + datetime.timedelta(minutes=1)).replace(second=0, microsecond=0)
     return local.replace(second=0, microsecond=0)
 
 
@@ -103,14 +114,16 @@ def record_reading(controller_id, product_code, count=None, delta=None,
         count = count if count is not None else ((prev.total + delta) if prev else delta)
 
     # ---- Минутная запись ----
+    # Запись создаётся на (линия, минута, задание): если в течение одной
+    # минуты произошло несколько смен кода продукта, каждая часть минуты
+    # фиксируется отдельной записью (все данные сохраняются).
     minute = floor_minute(at)
     record, _ = ProductionRecord.objects.get_or_create(
-        line=line, minute_start=minute, defaults={'assignment': assignment, 'count': 0},
+        line=line, minute_start=minute, assignment=assignment,
+        defaults={'count': 0},
     )
     record.count += delta
-    if record.assignment_id is None:
-        record.assignment = assignment
-    record.save(update_fields=['count', 'assignment'])
+    record.save(update_fields=['count'])
 
     assignment.total_count += delta
     assignment.save(update_fields=['total_count'])
@@ -174,37 +187,65 @@ def resolve_range(line, from_raw=None, to_raw=None, clamp=True):
 
 
 def build_minute_series(line, from_dt, to_dt):
-    """Минутный ряд [{minute, ts, count, assignment_id}] с заполнением нулей."""
-    records = OrderedDict(
-        (r.minute_start, r)
-        for r in ProductionRecord.objects.filter(
-            line=line, minute_start__gte=from_dt, minute_start__lt=floor_minute(to_dt),
-        ).select_related('assignment__product')
+    """Минутный ряд [{minute, ts, count, parts, ...}] с заполнением нулей.
+
+    В ряде учитывается и текущая (неполная) минута — подсчёт идёт в
+    реальном времени. Если за минуту было несколько продуктов (несколько
+    смен кода), в ``parts`` попадает разбивка минуты по продуктам:
+    [{code, name, count}] — столбец диаграммы делится на цветные сегменты.
+    """
+    records = list(
+        ProductionRecord.objects
+        .filter(line=line, minute_start__gte=from_dt,
+                minute_start__lt=ceil_minute(to_dt))
+        .select_related('assignment__product')
+        .order_by('minute_start', 'assignment_id')
     )
+    by_minute = {}
+    for r in records:
+        by_minute.setdefault(r.minute_start, []).append(r)
+
     series = []
     cur = from_dt
-    end = floor_minute(to_dt)
+    end = ceil_minute(to_dt)
     while cur < end:
-        rec = records.get(cur)
+        group = by_minute.get(cur, [])
+        parts = []
+        total = 0
+        for r in group:
+            if r.assignment_id and r.assignment is not None:
+                parts.append({
+                    'code': r.assignment.product.code,
+                    'name': r.assignment.product.name,
+                    'count': r.count,
+                })
+                total += r.count
+        parts.sort(key=lambda p: (int(p['code']) if p['code'].isdigit() else 9999,
+                                  p['code']))
+        dominant = max(parts, key=lambda p: p['count']) if parts else None
         series.append({
             'minute': timezone.localtime(cur).strftime('%H:%M'),
             'full_minute': timezone.localtime(cur).strftime('%d.%m.%Y %H:%M'),
             'ts': cur.isoformat(),
-            'count': rec.count if rec else 0,
-            'assignment_id': rec.assignment_id if rec else None,
-            'product_code': (rec.assignment.product.code
-                             if rec and rec.assignment_id else None),
-            'product_name': (rec.assignment.product.name
-                             if rec and rec.assignment_id else None),
+            'count': total,
+            'assignment_id': group[0].assignment_id if group else None,
+            'product_code': dominant['code'] if dominant else None,
+            'product_name': dominant['name'] if dominant else None,
+            'parts': parts,
         })
         cur += MINUTE
     return series
 
 
 def range_summary(line, from_dt, to_dt):
-    """Итоги по выбранному диапазону: всего + разбивка по продуктам."""
+    """Итоги по выбранному диапазону: всего + разбивка по продуктам.
+
+    Учитывается и текущая (неполная) минута, чтобы итоги обновлялись
+    в реальном времени.
+    """
     qs = (ProductionRecord.objects
-          .filter(line=line, minute_start__gte=from_dt, minute_start__lt=floor_minute(to_dt))
+          .filter(line=line, minute_start__gte=from_dt,
+                  minute_start__lt=ceil_minute(to_dt))
           .select_related('assignment__product'))
     total = qs.aggregate(total=Sum('count'))['total'] or 0
     per_product = []
@@ -332,47 +373,6 @@ def downtime_events(line, from_dt, to_dt, now=None):
 
     events.sort(key=lambda e: e['start'])
     return events
-
-
-# ---------------------------------------------------------------------------
-# Сравнение линий (вкладка «Отчёты»)
-# ---------------------------------------------------------------------------
-
-def comparison_data(lines_spec, now=None):
-    """Данные для сравнительной диаграммы.
-
-    lines_spec: список {line_id, from, to} — линия и свой период.
-    Возвращает список серий: {line_id, name, color, from, to, series: [...]}.
-    """
-    now = now or timezone.now()
-    result = []
-    for spec in lines_spec:
-        line_id = spec.get('line_id') or spec.get('id')
-        if line_id is None:
-            continue
-        try:
-            line = Line.objects.select_related('shop').get(pk=line_id)
-        except (Line.DoesNotExist, KeyError, TypeError, ValueError):
-            continue
-        try:
-            from_dt, to_dt = resolve_range(
-                line, spec.get('from'), spec.get('to'), clamp=True,
-            )
-        except ValueError:
-            continue
-        series = build_minute_series(line, from_dt, to_dt)
-        summary = range_summary(line, from_dt, to_dt)
-        result.append({
-            'line_id': line.pk,
-            'name': str(line),
-            'shop_name': line.shop.name,
-            'color': _line_color(line.pk),
-            'from': from_dt.isoformat(),
-            'to': to_dt.isoformat(),
-            'total': summary['total'],
-            'series': series,
-        })
-    return result
 
 
 def _line_color(line_pk):

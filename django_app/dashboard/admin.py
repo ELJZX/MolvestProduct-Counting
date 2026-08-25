@@ -35,13 +35,6 @@ class LineAdmin(admin.ModelAdmin):
     )
 
 
-class AssignmentInline(admin.TabularInline):
-    model = ProductAssignment
-    extra = 0
-    readonly_fields = ('total_count',)
-    autocomplete_fields = ('product',)
-
-
 @admin.register(Counter)
 class CounterAdmin(admin.ModelAdmin):
     list_display = ('name', 'line', 'created_at')
@@ -82,13 +75,14 @@ class ReportLogAdmin(admin.ModelAdmin):
 
 @admin.register(SystemConfig)
 class SystemConfigAdmin(admin.ModelAdmin):
-    """Настройки системы: источник данных для отчётов и путь к папке DBF.
+    """Настройки системы: источник данных для отчётов, путь к папке DBF
+    и пин-код смены продукта на линии.
 
     Позволяет администратору быстро поменять папку с файлами *.dbf
     (запасной режим отчётов) прямо из админки Django.
     """
-    list_display = ('data_source', 'dbf_dir', 'resolved_dbf_dir_display', 'updated_at')
-    fields = ('data_source', 'dbf_dir')
+    list_display = ('data_source', 'switch_pin', 'dbf_dir', 'resolved_dbf_dir_display', 'updated_at')
+    fields = ('data_source', 'switch_pin', 'dbf_dir')
     readonly_fields = ('resolved_dbf_dir_display',)
 
     def has_add_permission(self, request):

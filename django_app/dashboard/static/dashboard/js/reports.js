@@ -92,8 +92,8 @@
     return counterById[value] || counterById[parseInt(value, 10)];
   }
 
-  // Маркеры простоя на минутном графике: на каждую минуту — жёлтый «!»,
-  // на последней минуте события — общее время простоя.
+  // Маркеры простоя на минутном графике: каждая минута простоя — точка;
+  // над каждым столбиком — жёлтый «!», при наведении — период простоя.
   function buildDownColumns(minuteTs, events, seriesData) {
     const markers = [];
     (events || []).forEach((ev) => {
@@ -102,19 +102,12 @@
       const dur = fmtDuration(ev.minutes);
       const text = 'Простой: ' + fmtDT(ev.start) + ' – ' + fmtDT(ev.end) +
         ' · ' + dur;
-      const idxs = [];
       for (let i = 0; i < minuteTs.length; i++) {
         const ts = new Date(minuteTs[i]).getTime();
-        if (ts >= start && ts < end) idxs.push(i);
+        if (ts >= start && ts < end) {
+          markers.push({ idx: i, text: text });
+        }
       }
-      if (!idxs.length) return;
-      idxs.forEach((idx, j) => {
-        markers.push({
-          idx: idx,
-          label: (j === idxs.length - 1) ? dur : '!',
-          text: text,
-        });
-      });
     });
     return markers;
   }
@@ -177,8 +170,31 @@
         return;
       }
       const d = st.visibleDetails[idx] || null;
+      const parts = (st.visibleParts && st.visibleParts[idx]) || [];
       const value = dp.parsed.y;
       const label = st.visibleLabels[idx] || '';
+      if (parts.length > 1) {
+        // Несколько продуктов в одной минуте: общее кол-во, ниже дата/время,
+        // ниже — по каждому продукту цветной код (цвет продукта) и его кол-во
+        const rows = parts.map((p) => {
+          const pp = st.productsMap && st.productsMap[p.code] ? st.productsMap[p.code] : null;
+          return '<div class="tt-part">' +
+            '<span class="product-chip" style="background:' + ((pp && pp.color) || '#6c757d') + '">' + p.code + '</span>' +
+            '<span class="tt-part-count">' + Number(p.count || 0).toLocaleString('ru-RU') + ' шт.</span>' +
+            '</div>';
+        }).join('');
+        // дата и время минуты (для минутных графиков — полная дата)
+        const dts = (d && d.ts) || '';
+        const timeText = (dts && dts.indexOf(':') !== -1) ? dts : label;
+        el.innerHTML = '<div class="tt-body tt-body-col">' +
+          '<div class="tt-text">' +
+          '<div class="tt-count">' + Number(value || 0).toLocaleString('ru-RU') + ' шт.</div>' +
+          (timeText ? '<div class="tt-time">' + escapeHtml(timeText) + '</div>' : '') +
+          '<div class="tt-parts">' + rows + '</div>' +
+          '</div></div>';
+        placeTooltip(el, px, py);
+        return;
+      }
       let imgHtml;
       if (d && d.image) {
         imgHtml = '<img class="tt-img" src="' + d.image + '" alt="">';
@@ -232,11 +248,23 @@
       chart: null,
       chartApi: null,
       fullLabels: [], fullData: [], chartDetails: [], chartColors: [],
-      visibleLabels: [], visibleDetails: [],
+      visibleLabels: [], visibleDetails: [], visibleParts: [],
       minuteTs: [], fullDown: [], downColumns: [], downTexts: {}, downLabels: {},
+      parts: [],          // разбивка минуты по продуктам (если есть)
+      usesParts: false,   // минутный график с несколькими продуктами в минуте
+      codeToDs: {},       // код продукта -> индекс датасета
       lastParams: null,
       lastReportId: null,
       built: false,
+    };
+
+    // Индекс датасета простоя (всегда последний) в chart.data.datasets
+    st.downIdx = function () {
+      if (!st.chart) return -1;
+      for (let i = 0; i < st.chart.data.datasets.length; i++) {
+        if (st.chart.data.datasets[i]._down) return i;
+      }
+      return -1;
     };
 
     const downInput = node.querySelector('.rb-down-input');
@@ -318,16 +346,17 @@
       const labels = st.visibleLabels;
       const data = st.fullData.slice(w.min, w.max + 1);
       st.visibleDetails = st.chartDetails.slice(w.min, w.max + 1);
+      st.visibleParts = st.parts.slice(w.min, w.max + 1);
       st.chart.data.labels = labels;
-      st.chart.data.datasets[0].data = data;
-      // Цвет столбцов — цвет продукта; обязательно срез по видимому окну
-      st.chart.data.datasets[0].backgroundColor = st.chartColors.slice(w.min, w.max + 1);
       // Запас по оси Y: максимум (продукция + простои) + 20% сверху
       let maxVal = st.fullData.reduce((m, v) => Math.max(m, v || 0), 0);
       if (st.fullDown.length) maxVal = st.fullDown.reduce((m, v) => Math.max(m, v || 0), maxVal);
       st.chart.options.scales.y.max = window.Molvest3D
         ? Molvest3D.yAxisMax(maxVal)
         : Math.max(1, Math.ceil(maxVal * 1.4));
+      // Чёрная окантовка столбиков — только в оконном режиме; при
+      // максимальном уменьшении («Весь период») убираем, чтобы не чернить график
+      st.chart.options.plugins.molvest3d.outline = st.chartApi ? !st.chartApi.isFullPeriod() : true;
       // Данные простоя: набор столбцов не скрываем (ширина столбцов не меняется),
       // при выключенном чекбоксе просто обнуляем значения
       const showDown = downInput.checked;
@@ -338,39 +367,139 @@
       // Оба датасета — в одном стеке: Chart.js не делит ширину категории
       // (иначе столбики разрежены). Месячный график — без стека (простой рядом).
       const isMinuteChart = st.minuteTs.length > 0;
-      if (isMinuteChart) {
-        st.chart.data.datasets[0].stack = 'main';
-        st.chart.data.datasets[1].stack = 'main';
+      st.chart.options.scales.x.stacked = isMinuteChart;
+      st.chart.options.scales.y.stacked = isMinuteChart;
+      // Данные по продуктам: при многопродуктовых минутах — по датасету на
+      // продукт (столбец делится на цветные сегменты), иначе один датасет
+      if (st.usesParts) {
+        Object.keys(st.codeToDs).forEach((code) => {
+          const ds = st.chart.data.datasets[st.codeToDs[code]];
+          if (!ds) return;
+          ds.data = data.map((_, i) => {
+            const parts = st.visibleParts[i] || [];
+            for (let j = 0; j < parts.length; j++) {
+              if (parts[j].code === code) return parts[j].count || 0;
+            }
+            return 0;
+          });
+        });
       } else {
-        st.chart.data.datasets[0].stack = undefined;
-        st.chart.data.datasets[1].stack = undefined;
+        st.chart.data.datasets[0].data = data;
+        // Цвет столбцов — цвет продукта; обязательно срез по видимому окну
+        st.chart.data.datasets[0].backgroundColor = st.chartColors.slice(w.min, w.max + 1);
       }
       let downData;
-      if (isMinuteChart) {
-        // минутный график: жёлтые маркеры с «!»/итогом на каждой минуте простоя
+      const di = st.downIdx();
+      if (isMinuteChart && di !== -1) {
+        // минутный график: минимальные красно-полосатые столбики (1–2 ед.)
+        // на каждой минуте простоя; над каждым — жёлтый «!»
+        const DOWN_MIN_VALUE = 1;
         downData = new Array(data.length).fill(0);
         if (showDown) {
           st.downColumns.forEach((c) => {
             const local = c.idx - w.min;
             if (local >= 0 && local < data.length) {
-              downData[local] = maxVal;
+              downData[local] = DOWN_MIN_VALUE;
               st.downTexts[local] = c.text;
-              st.downLabels[local] = c.label;
+              st.downLabels[local] = '!';
             }
           });
         }
-        st.chart.data.datasets[1].backgroundColor = '#ffc107';
-      } else {
+        st.chart.data.datasets[di].backgroundColor = stripesPattern;
+      } else if (di !== -1) {
         // месячный график: минуты простоя по дням (красно-чёрные столбики рядом)
         downData = showDown ? st.fullDown.slice(w.min, w.max + 1) : new Array(data.length).fill(0);
-        st.chart.data.datasets[1].backgroundColor = stripesPattern;
+        st.chart.data.datasets[di].backgroundColor = stripesPattern;
+      } else {
+        downData = new Array(data.length).fill(0);
       }
-      st.chart.data.datasets[1].data = downData;
+      if (di !== -1) {
+        st.chart.data.datasets[di].data = downData;
+        st.chart.data.datasets[di].borderWidth = 0;
+      }
       st.chart.update('none');
     }
     downInput.addEventListener('change', renderVisible);
 
     // --- построение графика блока ---
+    function ensureDownDs() {
+      if (st.downIdx() !== -1) return;
+      st.chart.data.datasets.push({
+        label: 'Простой',
+        _down: true,
+        data: [],
+        backgroundColor: stripesPattern,
+        borderWidth: 0,
+        borderRadius: 0,
+        barPercentage: 1.0,
+        categoryPercentage: 1.0,
+        stack: 'main',
+        molvest3d: false,
+      });
+    }
+
+    // Датасеты графика: по одному на продукт при многопродуктовых минутах
+    // (столбец делится на цветные сегменты), иначе — единый датасет продукции.
+    // Датасет простоя всегда существует и является последним.
+    function syncReportDatasets() {
+      if (!st.chart) return;
+      ensureDownDs();
+      const codes = new Set();
+      if (st.usesParts) {
+        st.parts.forEach((parts) => (parts || []).forEach((p) => {
+          if (p && p.code) codes.add(p.code);
+        }));
+      }
+      // удаляем устаревшие датасеты продуктов
+      st.chart.data.datasets = st.chart.data.datasets.filter((ds) => {
+        if (ds._down) return true;
+        if (ds._code && codes.has(ds._code)) return true;
+        delete st.codeToDs[ds._code];
+        return false;
+      });
+      if (st.usesParts) {
+        let insertIdx = st.downIdx();
+        if (insertIdx === -1) insertIdx = st.chart.data.datasets.length;
+        const sorted = Array.from(codes)
+          .sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0) || a.localeCompare(b));
+        sorted.forEach((code) => {
+          if (code in st.codeToDs) return;
+          const p = st.productsMap[code] || null;
+          st.chart.data.datasets.splice(insertIdx, 0, {
+            label: 'Продукт ' + code,
+            _code: code,
+            data: [],
+            backgroundColor: (p && p.color) || '#6c757d',
+            borderWidth: 0,
+            borderRadius: 0,
+            barPercentage: 1.0,
+            categoryPercentage: 1.0,
+            stack: 'main',
+          });
+          insertIdx += 1;
+        });
+      } else {
+        // единый датасет продукции (нет многопродуктовых минут)
+        if (!st.chart.data.datasets.length || st.chart.data.datasets[0]._down) {
+          st.chart.data.datasets.splice(0, 0, {
+            label: 'Продукция',
+            data: [],
+            backgroundColor: [],
+            borderWidth: 0,
+            borderRadius: 0,
+            barPercentage: 1.0,
+            categoryPercentage: 1.0,
+            stack: 'main',
+          });
+        }
+      }
+      // пересчёт индексов датасетов продуктов
+      Object.keys(st.codeToDs).forEach((k) => delete st.codeToDs[k]);
+      st.chart.data.datasets.forEach((ds, i) => {
+        if (!ds._down && ds._code) st.codeToDs[ds._code] = i;
+      });
+    }
+
     function renderChart(cfg) {
       if (!cfg || !cfg.labels || !cfg.labels.length) {
         chartCard.classList.add('d-none');
@@ -386,35 +515,16 @@
       st.chartColors = (cfg.colors && cfg.colors.length === st.fullData.length)
         ? cfg.colors.slice()
         : st.chartDetails.map((d) => (d && d.color) || '#6c757d');
+      st.productsMap = cfg.products || {};
+      st.parts = (cfg.parts && cfg.parts.length === st.fullLabels.length) ? cfg.parts : [];
+      // многопродуктовые минуты — только на минутных графиках
+      st.usesParts = st.minuteTs.length > 0 && st.parts.length === st.fullLabels.length;
       if (!st.chart) {
         st.chart = new Chart(canvas.getContext('2d'), {
           type: cfg.type || 'bar',
           data: {
             labels: st.fullLabels.slice(),
-            datasets: [
-              {
-                label: 'Продукция',
-                data: st.fullData.slice(),
-                backgroundColor: st.chartColors.slice(),
-                borderWidth: 0,
-                borderRadius: 0,
-                barPercentage: 1.0,
-                categoryPercentage: 1.0,
-              },
-              {
-                // Простои: на минутном графике — жёлтые маркеры с «!»,
-                // на месячном — минуты простоя по дням
-                label: 'Простой',
-                data: [],
-                backgroundColor: stripesPattern,
-                borderWidth: 1,
-                borderColor: 'rgba(0,0,0,0.7)',
-                borderRadius: 0,
-                barPercentage: 1.0,
-                categoryPercentage: 1.0,
-                molvest3d: false,
-              },
-            ],
+            datasets: [],
           },
           options: {
             responsive: true,
@@ -424,21 +534,23 @@
               // Вместо легенды — чекбокс «Отображать график простоя»
               legend: { display: false },
               tooltip: { enabled: false, external: makeTooltipHandler(st) },
-              molvest3d: { enabled: true, depth: 9 },
-              // Жёлтый «!» на каждой минуте простоя; итог — на последней минуте
+              molvest3d: { enabled: true, depth: 9, outline: true },
+              // Жёлтый «!» над каждым столбиком простоя
               datalabels: {
-                display: (ctx) => ctx.datasetIndex === 1 && !!st.downLabels[ctx.dataIndex],
-                color: '#6b4e00',
+                display: (ctx) => ctx.datasetIndex === st.downIdx() && !!st.downLabels[ctx.dataIndex],
+                color: '#ffc107',
+                textStrokeColor: 'rgba(0,0,0,0.85)',
+                textStrokeWidth: 1.5,
                 anchor: 'end',
                 align: 'end',
-                offset: -1,
-                font: { weight: 'bold', size: 9 },
+                offset: 1,
+                font: { weight: 'bold', size: 12 },
                 formatter: (value, ctx) => st.downLabels[ctx.dataIndex] || '',
               },
             },
             scales: {
-              x: { grid: { display: false }, ticks: { maxTicksLimit: 16, maxRotation: 0, autoSkip: true } },
-              y: { beginAtZero: true, ticks: { precision: 0 } },
+              x: { stacked: st.usesParts, grid: { display: false }, ticks: { maxTicksLimit: 16, maxRotation: 0, autoSkip: true } },
+              y: { stacked: st.usesParts, beginAtZero: true, ticks: { precision: 0 } },
             },
           },
         });
@@ -451,9 +563,8 @@
         st.chart.canvas.addEventListener('mouseleave', hideTooltip);
       } else {
         st.chart.data.labels = st.fullLabels.slice();
-        st.chart.data.datasets[0].data = st.fullData.slice();
-        st.chart.data.datasets[0].backgroundColor = st.chartColors.slice();
       }
+      syncReportDatasets();
       if (st.chartApi) {
         st.chartApi.setData(st.fullLabels.length);
         // Минутные графики (много точек) открываются окном 30 минут;

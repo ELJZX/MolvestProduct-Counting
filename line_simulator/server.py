@@ -94,6 +94,17 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, b'{"ok": false, "error": "invalid json"}')
                 return
             self._proxy('POST', '/api/v1/counter/', payload)
+        elif path == '/api/switch':
+            # Смена кода продукта на линии (только по явной команде пользователя
+            # с вводом пин-кода). Проксируется на Django, где проверяется пин-код.
+            length = int(self.headers.get('Content-Length') or 0)
+            raw = self.rfile.read(length) if length else b'{}'
+            try:
+                payload = json.loads(raw.decode('utf-8') or '{}')
+            except ValueError:
+                self._send(400, b'{"ok": false, "error": "invalid json"}')
+                return
+            self._proxy('POST', '/api/v1/sim/switch/', payload)
         else:
             self._send(404, b'{"ok": false, "error": "not found"}')
 

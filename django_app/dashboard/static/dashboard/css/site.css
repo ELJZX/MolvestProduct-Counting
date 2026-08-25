@@ -601,6 +601,68 @@ table.table {
   color: #495057;
   white-space: nowrap;
 }
+/* Индикатор «Продукция, шт/мин»: несколько цветов/кодов продуктов,
+   видимых на выбранном отрезке (чипы в ряд) */
+.prod-legend-swatches {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  flex-wrap: wrap;
+}
+.prod-legend-swatches .prod-legend-swatch {
+  min-width: 2.2rem;
+  padding: .12rem .45rem;
+  font-size: .8rem;
+}
+/* Всплывающее уведомление на странице линии */
+.line-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 3000;
+  background: #0d2b52;
+  color: #fff;
+  padding: .65rem 1.1rem;
+  border-radius: .65rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+  font-size: .95rem;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity .2s ease, transform .2s ease;
+  pointer-events: none;
+  max-width: min(92vw, 560px);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.line-toast.show { opacity: 1; transform: translateX(-50%) translateY(-6px); }
+.line-toast.ok { background: #198754; }
+.line-toast.err { background: #dc3545; }
+.line-toast.warn { background: #b8860b; }
+/* Тултип: несколько продуктов в одной минуте */
+.tt-body-col { align-items: flex-start; }
+.tt-parts {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  margin-top: .4rem;
+}
+.tt-part {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  font-size: .85rem;
+}
+.tt-part .product-chip { margin-right: 0; }
+.tt-part-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt-part-count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 /* Защита от выхода скролла графика за пределы */
 html, body { overflow-x: hidden; }
 .chart-wrap {

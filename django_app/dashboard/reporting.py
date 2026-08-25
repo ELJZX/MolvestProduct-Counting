@@ -246,7 +246,6 @@ def _chart_details_from_series(series, products_map):
 
 def resolve_period(tab, params):
     """Возвращает (from_dt, to_dt, label, error)."""
-    tz = timezone.get_current_timezone()
     try:
         if tab == 'shift':
             date = datetime.datetime.strptime(params.get('date', ''), '%Y-%m-%d').date()
@@ -573,6 +572,11 @@ def build_report(tab, rtype, counter_id, params):
                 }],
                 'details': details,
                 'colors': [d['color'] for d in details],
+                # разбивка минуты по продуктам (несколько смен кода за минуту):
+                # столбец делится на цветные сегменты
+                'parts': [s.get('parts') or [] for s in series],
+                # справочник продуктов (код -> цвет/1С/картинка) для тултипов
+                'products': products_map,
                 # индекс минуты (ISO) == индекс столбца; события простоя для столбиков
                 'minute_ts': [s['ts'] for s in series],
                 'downtime': [
@@ -666,6 +670,7 @@ def build_report(tab, rtype, counter_id, params):
                               'data': [by_day[d]['total'] for d in days]}],
                 'details': details,
                 'colors': [d['color'] for d in details],
+                'products': products_map,
                 # минуты простоя по дням (столбики второго датасета)
                 'downtime_by_day': [dt_by_day.get(d, 0) for d in days],
             }

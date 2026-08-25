@@ -47,6 +47,12 @@
     el._t = setTimeout(() => { el.className = 'toast'; }, 2600);
   }
 
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   async function apiGet(path) {
     const resp = await fetch(path);
     const data = await resp.json().catch(() => ({}));
@@ -148,7 +154,7 @@
       return;
     }
     linesWrap.innerHTML = sel.map((l) =>
-      '<div class="line-card" data-id="' + l.id + '" data-controller="' + l.controller_id + '">' +
+      '<div class="line-card" data-id="' + l.id + '" data-controller="' + l.controller_id + '" data-product="' + (l.product_code || '') + '">' +
         '<div class="line-head">' +
           '<div class="line-name">Л' + l.number + ' — ' + l.name + '</div>' +
           '<div class="line-shop">' + (l.shop_code || '') + '</div>' +
@@ -162,7 +168,10 @@
         '<div class="line-total"><span class="num" data-field="total">' + fmt(l.total_count) + '</span><span class="unit">шт. по заданию</span></div>' +
         '<div class="line-foot">' +
           '<div class="line-assignment">' + (l.assignment_started_at ? 'смена с ' + fmtDT(l.assignment_started_at) : 'задание не начато') + '</div>' +
-          '<button class="count-btn">Насчитать</button>' +
+          '<div class="line-btns">' +
+            '<button class="switch-btn" title="Сменить код продукта (с вводом пин-кода)">Изменить код</button>' +
+            '<button class="count-btn">Насчитать</button>' +
+          '</div>' +
         '</div>' +
       '</div>'
     ).join('');
@@ -234,6 +243,13 @@
       toast('Сначала выберите продукт', 'err');
       return;
     }
+    // Симулятор сам код продукта не меняет: насчитывать можно только тот
+    // продукт, который уже стоит на линии
+    const lineProduct = card.dataset.product || '';
+    if (lineProduct !== product) {
+      toast('Код продукции не соответствует', 'err');
+      return;
+    }
     const controllerId = card.dataset.controller;
     const delta = currentStep();
     card.classList.add('locked');
@@ -266,9 +282,150 @@
     }
   }
 
+  // ------------------------------------------------------------------
+  // Смена кода продукта (только пользователем, с вводом пин-кода)
+  // ------------------------------------------------------------------
+  const pinModal = document.getElementById('pinModal');
+  const pinInput = document.getElementById('pinInput');
+  const pinError = document.getElementById('pinError');
+  const pinOk = document.getElementById('pinOk');
+  const pinCancel = document.getElementById('pinCancel');
+  const confirmModal = document.getElementById('confirmModal');
+  const confirmText = document.getElementById('confirmText');
+  const confirmOk = document.getElementById('confirmOk');
+  const confirmCancel = document.getElementById('confirmCancel');
+
+  let pendingCard = null;   // карточка линии, для которой меняем код
+  let pendingPin = '';      // подтверждённый пин-код
+
+  function showModal(modal) { if (modal) modal.hidden = false; }
+  function hideModal(modal) { if (modal) modal.hidden = true; }
+
+  function openPinDialog(card) {
+    pendingCard = card;
+    pendingPin = '';
+    if (pinInput) pinInput.value = '';
+    if (pinError) pinError.hidden = true;
+    showModal(pinModal);
+    if (pinInput) pinInput.focus();
+  }
+
+  function cancelSwitchOp() {
+    toast('Операция отменена пользователем', 'warn');
+    hideModal(pinModal);
+    hideModal(confirmModal);
+    pendingCard = null;
+    pendingPin = '';
+  }
+
+  if (pinInput) {
+    pinInput.addEventListener('input', () => {
+      pinInput.value = pinInput.value.replace(/\D/g, '');
+      if (pinError) pinError.hidden = true;
+    });
+    pinInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); if (pinOk) pinOk.click(); }
+    });
+  }
+  if (pinCancel) pinCancel.addEventListener('click', cancelSwitchOp);
+  if (confirmCancel) confirmCancel.addEventListener('click', cancelSwitchOp);
+  // клик по подложке или Escape — отмена
+  [pinModal, confirmModal].forEach((m) => {
+    if (!m) return;
+    m.addEventListener('click', (ev) => { if (ev.target === m) cancelSwitchOp(); });
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && (!pinModal.hidden || !confirmModal.hidden)) cancelSwitchOp();
+  });
+
+  if (pinOk) {
+    pinOk.addEventListener('click', async () => {
+      if (!pendingCard) return;
+      const product = productSelect.value;
+      if (!product) { toast('Сначала выберите продукт', 'err'); return; }
+      const pin = pinInput ? pinInput.value : '';
+      if (!pin) {
+        if (pinError) { pinError.textContent = 'Введите пин-код'; pinError.hidden = false; }
+        return;
+      }
+      pinOk.disabled = true;
+      try {
+        const resp = await fetch('/api/switch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            controller_id: pendingCard.dataset.controller,
+            product_code: product,
+            pin: pin,
+            action: 'verify',
+          }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.ok) {
+          // Неверный пин-код — «Операция отклонена»
+          if (pinError) {
+            pinError.textContent = data.error || 'Операция отклонена';
+            pinError.hidden = false;
+          }
+          return;
+        }
+        pendingPin = pin;
+        const currentCode = data.current_code || pendingCard.dataset.product || '—';
+        if (confirmText) {
+          confirmText.innerHTML = 'Вы точно хотите изменить код продукта с «<b>' +
+            escapeHtml(currentCode) + '</b>» на «<b>' + escapeHtml(product) + '</b>»?';
+        }
+        hideModal(pinModal);
+        showModal(confirmModal);
+      } catch (e) {
+        if (pinError) { pinError.textContent = 'Ошибка: ' + e.message; pinError.hidden = false; }
+      } finally {
+        pinOk.disabled = false;
+      }
+    });
+  }
+
+  if (confirmOk) {
+    confirmOk.addEventListener('click', async () => {
+      if (!pendingCard || !pendingPin) return;
+      const product = productSelect.value;
+      confirmOk.disabled = true;
+      try {
+        const resp = await fetch('/api/switch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            controller_id: pendingCard.dataset.controller,
+            product_code: product,
+            pin: pendingPin,
+            action: 'confirm',
+          }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.ok) {
+          toast((data && data.error) || 'Не удалось изменить код продукта', 'err');
+          return;
+        }
+        toast('Код продукта изменён на ' + (data.product || product), 'ok');
+        hideModal(confirmModal);
+        pendingCard = null;
+        pendingPin = '';
+        loadLines();
+      } catch (e) {
+        toast('Ошибка: ' + e.message, 'err');
+      } finally {
+        confirmOk.disabled = false;
+      }
+    });
+  }
+
   linesWrap.addEventListener('click', (ev) => {
     const card = ev.target.closest('.line-card');
     if (!card || card.classList.contains('locked')) return;
+    if (ev.target.closest('.switch-btn')) {
+      openPinDialog(card);
+      return;
+    }
     countOnCard(card);
   });
 

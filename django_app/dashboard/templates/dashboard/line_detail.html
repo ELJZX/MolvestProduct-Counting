@@ -90,7 +90,7 @@
       <h2 class="h5 mb-0"><i class="bi bi-bar-chart me-1"></i>Производительность по минутам</h2>
       <div class="d-flex align-items-center gap-3 flex-wrap">
         <div class="prod-legend" id="prodLegend">
-          <span class="prod-legend-swatch" id="prodLegendSwatch" title="">—</span>
+          <span class="prod-legend-swatches" id="prodSwatches"></span>
           <span class="prod-legend-text">Продукция, шт/мин</span>
         </div>
         <label class="down-toggle" title="Показать/скрыть столбики простоев">
@@ -122,6 +122,49 @@
     </table>
   </div>
 </div>
+
+{# ---- Диалог ввода пин-кода при смене кода продукта ---- #}
+<div class="modal fade" id="pinModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 380px;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-shield-lock me-1"></i>Смена кода продукта</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-2">Введите пин-код для смены кода продукта на линии:</p>
+        <input type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off"
+               class="form-control form-control-lg text-center" id="pinInput"
+               placeholder="• • • •" maxlength="10">
+        <div id="pinError" class="text-danger fw-semibold mt-2 d-none"></div>
+        <div class="text-muted small mt-2">Пин-код по умолчанию: <code>2020</code> (можно изменить в админке, «Настройки системы»).</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" id="pinCancel">Отмена</button>
+        <button type="button" class="btn btn-primary" id="pinOk">Подтвердить</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ---- Диалог подтверждения смены кода продукта ---- #}
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered" style="max-width: 460px;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-question-circle me-1"></i>Подтверждение смены</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+      </div>
+      <div class="modal-body">
+        <div id="confirmText" class="fs-6"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" id="confirmCancel">Отмена</button>
+        <button type="button" class="btn btn-warning" id="confirmOk">Да, изменить</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -136,9 +179,9 @@
 {% load static %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
-<script src="{% static 'dashboard/js/chart_zoom.js' %}?v=8"></script>
-<script src="{% static 'dashboard/js/chart3d.js' %}?v=13"></script>
-<script src="{% static 'dashboard/js/line_chart.js' %}?v=15"></script>
+<script src="{% static 'dashboard/js/chart_zoom.js' %}?v=9"></script>
+<script src="{% static 'dashboard/js/chart3d.js' %}?v=15"></script>
+<script src="{% static 'dashboard/js/line_chart.js' %}?v=23"></script>
 <script>
 // Выпадающий список смены продукта: открывается по клику на поле,
 // закрывается при выборе или при клике в любом месте страницы.
@@ -220,6 +263,229 @@
         ev.preventDefault();
         field.classList.add('is-invalid');
         openPanel();
+      }
+    });
+  }
+})();
+</script>
+
+<script>
+// Смена кода продукта с подтверждением пин-кодом.
+// Сценарий: выбор кода в списке -> кнопка «Изменить код продукта» ->
+// диалог с полем пин-кода (только цифры) -> при неверном пин-коде
+// «Операция отклонена» -> после верного пин-кода подтверждение
+// «Вы точно хотите изменить код продукта с «X» на «Y»?» ->
+// при отмене «Операция отменена пользователем».
+(function () {
+  'use strict';
+
+  const form = document.getElementById('switchForm');
+  const hidden = document.getElementById('productComboValue');
+  const field = document.getElementById('productComboField');
+  if (!form || !hidden) return;
+
+  // Текущий код продукта на линии (прочерк, если кода нет)
+  let currentCode = '—';
+  try {
+    const raw = (document.getElementById('assignmentProductCode') || { textContent: 'null' }).textContent;
+    const v = JSON.parse(raw);
+    if (v) currentCode = String(v);
+  } catch (e) { /* ignore */ }
+
+  const pinModalEl = document.getElementById('pinModal');
+  const pinInput = document.getElementById('pinInput');
+  const pinError = document.getElementById('pinError');
+  const pinOk = document.getElementById('pinOk');
+  const pinCancel = document.getElementById('pinCancel');
+  const confirmModalEl = document.getElementById('confirmModal');
+  const confirmText = document.getElementById('confirmText');
+  const confirmOk = document.getElementById('confirmOk');
+  const confirmCancel = document.getElementById('confirmCancel');
+
+  const pinModal = pinModalEl ? new bootstrap.Modal(pinModalEl) : null;
+  const confirmModal = confirmModalEl ? new bootstrap.Modal(confirmModalEl) : null;
+
+  let pendingNewCode = ''; // выбранный пользователем код
+  let pendingPin = '';     // подтверждённый пин-код
+  let flowStage = 'idle';  // idle | pin | confirm
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function showToast(msg, kind) {
+    let el = document.getElementById('lineToast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'lineToast';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.className = 'line-toast show' + (kind ? ' ' + kind : '');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.className = 'line-toast'; }, 3400);
+  }
+
+  function cancelOp() {
+    if (flowStage === 'idle') return;
+    flowStage = 'idle';
+    showToast('Операция отменена пользователем', 'warn');
+  }
+
+  function csrfToken() {
+    const el = form.querySelector('input[name="csrfmiddlewaretoken"]');
+    return el ? el.value : '';
+  }
+
+  function resetPinDialog() {
+    if (pinInput) pinInput.value = '';
+    if (pinError) {
+      pinError.classList.add('d-none');
+      pinError.textContent = '';
+    }
+  }
+
+  // Клик по «Изменить код продукта» — открываем диалог пин-кода
+  form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    const newCode = hidden.value;
+    if (!newCode) {
+      field.classList.add('is-invalid');
+      const panel = document.getElementById('productComboPanel');
+      if (panel) {
+        form.querySelector('.product-combo').classList.add('open');
+        const search = document.getElementById('productComboSearch');
+        if (search) search.focus();
+      }
+      return;
+    }
+    pendingNewCode = newCode;
+    pendingPin = '';
+    flowStage = 'pin';
+    resetPinDialog();
+    if (pinModal) pinModal.show();
+    if (pinInput) pinInput.focus();
+  });
+
+  // Поле пин-кода: только цифры
+  if (pinInput) {
+    pinInput.addEventListener('input', function () {
+      pinInput.value = pinInput.value.replace(/\D/g, '');
+      if (pinError) pinError.classList.add('d-none');
+    });
+    pinInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); if (pinOk) pinOk.click(); }
+    });
+  }
+
+  if (pinCancel) {
+    pinCancel.addEventListener('click', function () {
+      if (pinModal) pinModal.hide();
+    });
+  }
+
+  // Закрытие диалога пин-кода (крестик/фон/Отмена) без подтверждения — отмена
+  if (pinModalEl) {
+    pinModalEl.addEventListener('hidden.bs.modal', function () {
+      if (flowStage === 'pin') cancelOp();
+    });
+  }
+
+  if (pinOk) {
+    pinOk.addEventListener('click', async function () {
+      const pin = pinInput ? pinInput.value : '';
+      if (!pin) {
+        if (pinError) {
+          pinError.textContent = 'Введите пин-код';
+          pinError.classList.remove('d-none');
+        }
+        return;
+      }
+      pinOk.disabled = true;
+      try {
+        const resp = await fetch(form.action, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': csrfToken(),
+          },
+          body: new URLSearchParams({
+            product_code: pendingNewCode, pin: pin, action: 'verify',
+          }).toString(),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.ok) {
+          // Неверный пин-код — «Операция отклонена»
+          if (pinError) {
+            pinError.textContent = data.error || 'Операция отклонена';
+            pinError.classList.remove('d-none');
+          }
+          return;
+        }
+        pendingPin = pin;
+        flowStage = 'confirm';
+        const actualCurrent = data.current_code || currentCode;
+        if (confirmText) {
+          confirmText.innerHTML = 'Вы точно хотите изменить код продукта с «<b>' +
+            escapeHtml(actualCurrent) + '</b>» на «<b>' + escapeHtml(pendingNewCode) + '</b>»?';
+        }
+        if (pinModal) pinModal.hide();
+        if (confirmModal) confirmModal.show();
+      } catch (e) {
+        if (pinError) {
+          pinError.textContent = 'Ошибка: ' + e.message;
+          pinError.classList.remove('d-none');
+        }
+      } finally {
+        pinOk.disabled = false;
+      }
+    });
+  }
+
+  if (confirmCancel) {
+    confirmCancel.addEventListener('click', function () {
+      if (confirmModal) confirmModal.hide();
+    });
+  }
+
+  // Закрытие диалога подтверждения без «Да» — отмена
+  if (confirmModalEl) {
+    confirmModalEl.addEventListener('hidden.bs.modal', function () {
+      if (flowStage === 'confirm') cancelOp();
+    });
+  }
+
+  if (confirmOk) {
+    confirmOk.addEventListener('click', async function () {
+      confirmOk.disabled = true;
+      try {
+        const resp = await fetch(form.action, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': csrfToken(),
+          },
+          body: new URLSearchParams({
+            product_code: pendingNewCode, pin: pendingPin, action: 'confirm',
+          }).toString(),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.ok) {
+          showToast(data.error || 'Не удалось изменить код продукта', 'err');
+          return;
+        }
+        flowStage = 'idle';
+        if (confirmModal) confirmModal.hide();
+        showToast('Код продукта изменён на ' + pendingNewCode, 'ok');
+        setTimeout(() => location.reload(), 1300);
+      } catch (e) {
+        showToast('Ошибка: ' + e.message, 'err');
+      } finally {
+        confirmOk.disabled = false;
       }
     });
   }
