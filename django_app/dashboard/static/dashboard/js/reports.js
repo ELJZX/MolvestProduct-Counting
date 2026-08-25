@@ -92,9 +92,8 @@
     return counterById[value] || counterById[parseInt(value, 10)];
   }
 
-  // Маркеры простоя на минутном графике: каждая минута простоя — столбик;
-  // подпись (общее время простоя) — только на последней минуте события,
-  // при наведении на любой столбик — период простоя.
+  // Маркеры простоя на минутном графике: каждая минута простоя — столбик
+  // с жёлтым «!» над ним; при наведении — период простоя.
   function buildDownColumns(minuteTs, events, seriesData) {
     const markers = [];
     (events || []).forEach((ev) => {
@@ -103,15 +102,12 @@
       const dur = fmtDuration(ev.minutes);
       const text = 'Простой: ' + fmtDT(ev.start) + ' – ' + fmtDT(ev.end) +
         ' · ' + dur;
-      const idxs = [];
       for (let i = 0; i < minuteTs.length; i++) {
         const ts = new Date(minuteTs[i]).getTime();
-        if (ts >= start && ts < end) idxs.push(i);
+        if (ts >= start && ts < end) {
+          markers.push({ idx: i, text: text, label: '!' });
+        }
       }
-      idxs.forEach((idx, j) => {
-        // подпись — только на последнем столбце события (общее время простоя)
-        markers.push({ idx: idx, text: text, label: (j === idxs.length - 1) ? dur : '' });
-      });
     });
     return markers;
   }
@@ -400,8 +396,7 @@
       const di = st.downIdx();
       if (isMinuteChart && di !== -1) {
         // минутный график: минимальные красно-полосатые столбики (1–2 ед.)
-        // на каждой минуте простоя; подпись (время простоя) — только на
-        // последней минуте события
+        // на каждой минуте простоя; над каждым — жёлтый «!»
         const DOWN_MIN_VALUE = 1;
         downData = new Array(data.length).fill(0);
         if (showDown) {
