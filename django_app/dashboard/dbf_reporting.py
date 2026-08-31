@@ -126,6 +126,89 @@ def _per_day_shift(paths, from_dt, to_dt):
     return rows
 
 
+def _by_shift_table(paths, from_dt, to_dt, shift_no=None):
+    """Отчёт по смене: кол-во по дням для выбранной смены + итог.
+
+    shift_no: 1 или 2 — только выбранная смена; None — обе смены (все строки).
+    Возвращает (rows, total).
+    """
+    rows = []
+    total = 0
+    for r in _per_day_shift(paths, from_dt, to_dt):
+        day_str = r['day'].strftime('%d.%m.%Y')
+        if shift_no == 1:
+            if r['shift1']:
+                rows.append([day_str, 'Смена 1', r['shift1']])
+                total += r['shift1']
+        elif shift_no == 2:
+            if r['shift2']:
+                rows.append([day_str, 'Смена 2', r['shift2']])
+                total += r['shift2']
+        else:
+            rows.append([day_str, 'Смена 1', r['shift1']])
+            rows.append([day_str, 'Смена 2', r['shift2']])
+            total += r['shift1'] + r['shift2']
+    if shift_no is None:
+        rows.sort(key=lambda x: (datetime.datetime.strptime(x[0], '%d.%m.%Y'),
+                                 x[1] == 'Смена 1'))
+    return rows, total
+
+
+def _shift_totals(paths, from_dt, to_dt):
+    """Суммы по сменам за период: (смена 1, смена 2, всего)."""
+    s1 = s2 = 0
+    for r in _per_day_shift(paths, from_dt, to_dt):
+        s1 += r['shift1']
+        s2 += r['shift2']
+    return s1, s2, s1 + s2
+
+
+def _day_product_rows(paths, from_dt, to_dt, pmap):
+    """Все продукты по каждому дню периода: [[дата, код, наименование, кол-во]].
+
+    «Полный отчёт»: на каждый день — каждый продукт, насчитанный в этот день.
+    Возвращает (rows, grand_total).
+    """
+    acc = {}
+    for r in _rows(paths, from_dt, to_dt):
+        d = _day_key(r['minute'])
+        k = r['kod_str'] or '000'
+        acc[(d, k)] = acc.get((d, k), 0) + r['count']
+    rows = []
+    grand = 0
+    for (d, k) in sorted(acc, key=lambda x: (x[0], x[1])):
+        p = _prod_info(k, pmap)
+        rows.append([d.strftime('%d.%m.%Y'), k, p['name'], _fmt_count(acc[(d, k)])])
+        grand += acc[(d, k)]
+    return rows, grand
+
+
+def _gross_tables(paths, from_dt, to_dt, pmap, title):
+    """Валовый отчёт по всем сменам: разбивка по сменам + по продуктам.
+
+    Возвращает список таблиц (по сменам, по продуктам).
+    """
+    s1, s2, stotal = _shift_totals(paths, from_dt, to_dt)
+    tables = [
+        _table(
+            'По сменам',
+            ['Смена', 'Кол-во, шт.'],
+            [['Смена 1 (00:00–07:59)', _fmt_count(s1)],
+             ['Смена 2 (08:00–23:59)', _fmt_count(s2)]],
+            total_row=['ИТОГО', _fmt_count(stotal)],
+        ),
+    ]
+    per_prod = _per_product(paths, from_dt, to_dt)
+    total = sum(per_prod.values())
+    tables.append(_table(
+        title,
+        ['Код', 'Продукт', 'Кол-во, шт.', '%'],
+        _rows_product_summary(per_prod, total, pmap),
+        total_row=['', 'ИТОГО', _fmt_count(total), '100,0%'],
+    ))
+    return tables
+
+
 def _month_start(d):
     return datetime.date(d.year, d.month, 1)
 
@@ -564,11 +647,8 @@ def build_report(tab, rtype, counter_id, params):
     # ----- Месяц -----
     elif tab == 'month':
         if rtype == 'by_shift':
-            rows = []
-            for r in _per_day_shift(paths, from_dt, to_dt):
-                rows.append([r['day'].strftime('%d.%m.%Y'), 'Смена 1', r['shift1']])
-                rows.append([r['day'].strftime('%d.%m.%Y'), 'Смена 2', r['shift2']])
-            total = sum(r[2] for r in rows)
+            shift_no = int(params.get('shift') or 0) or None
+            rows, total = _by_shift_table(paths, from_dt, to_dt, shift_no)
             tables.append(_table(
                 'Отчёт по смене (по дням)',
                 ['Дата', 'Смена', 'Кол-во, шт.'],
@@ -588,6 +668,13 @@ def build_report(tab, rtype, counter_id, params):
                 ['Код', 'Продукт', 'Кол-во, шт.', '%'],
                 _rows_product_summary(per_prod, total, pmap),
                 total_row=['', 'ИТОГО', _fmt_count(total), '100,0%']))
+            # Полный отчёт всех продуктов на каждый день месяца
+            dp_rows, dp_total = _day_product_rows(paths, from_dt, to_dt, pmap)
+            tables.append(_table(
+                'По дням и продуктам (полный отчёт за месяц)',
+                ['Дата', 'Код продукта', 'Наименование продукта', 'Кол-во, шт.'],
+                dp_rows,
+                total_row=['', '', 'ИТОГО', _fmt_count(dp_total)]))
         elif rtype == 'chart':
             chart = _chart_month(paths, from_dt, to_dt, pmap)
             # График без текстовой плашки: таблиц нет, отображается только график
@@ -599,13 +686,10 @@ def build_report(tab, rtype, counter_id, params):
                 'Отчёт о простоях (сводный, по дням)',
                 ['Дата', 'Время простоя'], rows, total_row=['ИТОГО', _fmt_duration(total)]))
         elif rtype == 'gross':
-            per_prod = _per_product(paths, from_dt, to_dt)
-            total = sum(per_prod.values())
-            tables.append(_table(
-                'Отчёт валовый по всем сменам (по продуктам)',
-                ['Код', 'Продукт', 'Кол-во, шт.', '%'],
-                _rows_product_summary(per_prod, total, pmap),
-                total_row=['', 'ИТОГО', _fmt_count(total), '100,0%']))
+            tables.extend(_gross_tables(
+                paths, from_dt, to_dt, pmap,
+                'По продуктам (валовый за все смены)',
+            ))
 
     # ----- Квартал -----
     elif tab == 'quarter':
@@ -624,19 +708,13 @@ def build_report(tab, rtype, counter_id, params):
                 _rows_product_summary(per_prod, total, pmap),
                 total_row=['', 'ИТОГО', _fmt_count(total), '100,0%']))
         elif rtype == 'gross':
-            per_prod = _per_product(paths, from_dt, to_dt)
-            total = sum(per_prod.values())
-            tables.append(_table(
-                'Отчёт валовый по всем сменам (по продуктам)',
-                ['Код', 'Продукт', 'Кол-во, шт.', '%'],
-                _rows_product_summary(per_prod, total, pmap),
-                total_row=['', 'ИТОГО', _fmt_count(total), '100,0%']))
+            tables.extend(_gross_tables(
+                paths, from_dt, to_dt, pmap,
+                'По продуктам (валовый за все смены)',
+            ))
         elif rtype == 'by_shift':
-            rows = []
-            for r in _per_day_shift(paths, from_dt, to_dt):
-                rows.append([r['day'].strftime('%d.%m.%Y'), 'Смена 1', r['shift1']])
-                rows.append([r['day'].strftime('%d.%m.%Y'), 'Смена 2', r['shift2']])
-            total = sum(r[2] for r in rows)
+            shift_no = int(params.get('shift') or 0) or None
+            rows, total = _by_shift_table(paths, from_dt, to_dt, shift_no)
             tables.append(_table(
                 'Отчёт по смене (по дням)',
                 ['Дата', 'Смена', 'Кол-во, шт.'],
@@ -661,24 +739,18 @@ def build_report(tab, rtype, counter_id, params):
                 ['Квартал', 'Кол-во, шт.'], rows,
                 total_row=['ИТОГО', _fmt_count(total)]))
             tables.append(_table(
-                'По продуктам за год',
+                'Итого (каждый продукт и его количество за год)',
                 ['Код', 'Продукт', 'Кол-во, шт.', '%'],
                 _rows_product_summary(per_prod, total, pmap),
                 total_row=['', 'ИТОГО', _fmt_count(total), '100,0%']))
         elif rtype == 'gross':
-            per_prod = _per_product(paths, from_dt, to_dt)
-            total = sum(per_prod.values())
-            tables.append(_table(
-                'Отчёт валовый по всем сменам (по продуктам)',
-                ['Код', 'Продукт', 'Кол-во, шт.', '%'],
-                _rows_product_summary(per_prod, total, pmap),
-                total_row=['', 'ИТОГО', _fmt_count(total), '100,0%']))
+            tables.extend(_gross_tables(
+                paths, from_dt, to_dt, pmap,
+                'По продуктам (валовый за все смены)',
+            ))
         elif rtype == 'by_shift':
-            rows = []
-            for r in _per_day_shift(paths, from_dt, to_dt):
-                rows.append([r['day'].strftime('%d.%m.%Y'), 'Смена 1', r['shift1']])
-                rows.append([r['day'].strftime('%d.%m.%Y'), 'Смена 2', r['shift2']])
-            total = sum(r[2] for r in rows)
+            shift_no = int(params.get('shift') or 0) or None
+            rows, total = _by_shift_table(paths, from_dt, to_dt, shift_no)
             tables.append(_table(
                 'Отчёт по смене (по дням)',
                 ['Дата', 'Смена', 'Кол-во, шт.'],
@@ -712,19 +784,13 @@ def build_report(tab, rtype, counter_id, params):
                 _rows_product_summary(per_prod, total, pmap),
                 total_row=['', 'ИТОГО', _fmt_count(total), '100,0%']))
         elif rtype == 'gross':
-            per_prod = _per_product(paths, from_dt, to_dt)
-            total = sum(per_prod.values())
-            tables.append(_table(
-                'Отчёт валовый по всем сменам (по продуктам)',
-                ['Код', 'Продукт', 'Кол-во, шт.', '%'],
-                _rows_product_summary(per_prod, total, pmap),
-                total_row=['', 'ИТОГО', _fmt_count(total), '100,0%']))
+            tables.extend(_gross_tables(
+                paths, from_dt, to_dt, pmap,
+                'По продуктам (валовый за все смены)',
+            ))
         elif rtype == 'by_shift':
-            rows = []
-            for r in _per_day_shift(paths, from_dt, to_dt):
-                rows.append([r['day'].strftime('%d.%m.%Y'), 'Смена 1', r['shift1']])
-                rows.append([r['day'].strftime('%d.%m.%Y'), 'Смена 2', r['shift2']])
-            total = sum(r[2] for r in rows)
+            shift_no = int(params.get('shift') or 0) or None
+            rows, total = _by_shift_table(paths, from_dt, to_dt, shift_no)
             tables.append(_table(
                 'Отчёт по смене (по дням)',
                 ['Дата', 'Смена', 'Кол-во, шт.'],

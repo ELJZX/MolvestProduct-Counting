@@ -271,6 +271,14 @@
       return -1;
     };
 
+    // Толщина чёрной окантовки столбцов: в оконном режиме — 1px, при
+    // максимальном уменьшении («Весь период») — 0 (чтобы не чернить график).
+    function barBorderWidth(ctx) {
+      const z = ctx && ctx.chart && st.chart && ctx.chart === st.chart
+        ? st.chart._molvestZoom : null;
+      return z && z.isFullPeriod() ? 0 : 1;
+    }
+
     const downInput = node.querySelector('.rb-down-input');
     const statusEl = node.querySelector('.rb-status');
     const resultEl = node.querySelector('.rb-result');
@@ -289,6 +297,20 @@
     }
     tabs.forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
     switchTab('shift');
+
+    // --- тип отчёта — кнопки (как вкладки Смена/Сутки/...) ---
+    node.querySelectorAll('.rb-type-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const panel = btn.closest('.report-panel');
+        if (!panel) return;
+        panel.querySelectorAll('.rb-type-btn').forEach((b) => {
+          b.classList.toggle('active', b === btn);
+        });
+        panel.querySelectorAll('input.report-type').forEach((r) => {
+          r.checked = (r.value === btn.dataset.type);
+        });
+      });
+    });
 
     // --- «Весь период» на вкладке «Период» ---
     node.querySelectorAll('.btn-full-period').forEach((btn) => {
@@ -339,6 +361,11 @@
         if (start && start.value) params.start = start.value;
         if (end && end.value) params.end = end.value;
       }
+      // Выбор смены (вкладки Месяц/Квартал/Год/Период — для «Отчёта по смене»)
+      if (tab === 'month' || tab === 'quarter' || tab === 'year' || tab === 'period') {
+        const shiftSel = panel.querySelector('select[name="shift"]');
+        if (shiftSel) params.shift = shiftSel.value;
+      }
       return params;
     }
 
@@ -358,9 +385,6 @@
       st.chart.options.scales.y.max = window.Molvest3D
         ? Molvest3D.yAxisMax(maxVal)
         : Math.max(1, Math.ceil(maxVal * 1.4));
-      // Чёрная окантовка столбиков — только в оконном режиме; при
-      // максимальном уменьшении («Весь период») убираем, чтобы не чернить график
-      st.chart.options.plugins.molvest3d.outline = st.chartApi ? !st.chartApi.isFullPeriod() : true;
       // Данные простоя: набор столбцов не скрываем (ширина столбцов не меняется),
       // при выключенном чекбоксе просто обнуляем значения
       const showDown = downInput.checked;
@@ -395,17 +419,17 @@
       let downData;
       const di = st.downIdx();
       if (isMinuteChart && di !== -1) {
-        // минутный график: минимальные красно-полосатые столбики (1–2 ед.)
-        // на каждой минуте простоя; над каждым — жёлтый «!»
-        const DOWN_MIN_VALUE = 1;
+        // минутный график: столбики простоя высотой 5% от максимального
+        // столбца продукции; над каждым — жёлтый «!»
+        const downValue = Math.max(1, Math.round(maxVal * 0.05));
         downData = new Array(data.length).fill(0);
         if (showDown) {
           st.downColumns.forEach((c) => {
             const local = c.idx - w.min;
             if (local >= 0 && local < data.length) {
-              downData[local] = DOWN_MIN_VALUE;
+              downData[local] = downValue;
               st.downTexts[local] = c.text;
-              st.downLabels[local] = c.label;
+              st.downLabels[local] = '!';
             }
           });
         }
@@ -419,7 +443,6 @@
       }
       if (di !== -1) {
         st.chart.data.datasets[di].data = downData;
-        st.chart.data.datasets[di].borderWidth = 0;
       }
       st.chart.update('none');
     }
@@ -433,7 +456,8 @@
         _down: true,
         data: [],
         backgroundColor: stripesPattern,
-        borderWidth: 0,
+        borderWidth: barBorderWidth,
+        borderColor: 'rgba(0,0,0,0.75)',
         borderRadius: 0,
         barPercentage: 1.0,
         categoryPercentage: 1.0,
@@ -474,7 +498,8 @@
             _code: code,
             data: [],
             backgroundColor: (p && p.color) || '#6c757d',
-            borderWidth: 0,
+            borderWidth: barBorderWidth,
+            borderColor: 'rgba(0,0,0,0.75)',
             borderRadius: 0,
             barPercentage: 1.0,
             categoryPercentage: 1.0,
@@ -489,7 +514,8 @@
             label: 'Продукция',
             data: [],
             backgroundColor: [],
-            borderWidth: 0,
+            borderWidth: barBorderWidth,
+            borderColor: 'rgba(0,0,0,0.75)',
             borderRadius: 0,
             barPercentage: 1.0,
             categoryPercentage: 1.0,
@@ -538,7 +564,9 @@
               // Вместо легенды — чекбокс «Отображать график простоя»
               legend: { display: false },
               tooltip: { enabled: false, external: makeTooltipHandler(st) },
-              molvest3d: { enabled: true, depth: 9, outline: true },
+              // 2D-столбцы: 3D-эффект отключён (enabled: false) — плоские
+              // непрозрачные столбцы цветом продукта, без «прозрачности»
+              molvest3d: { enabled: false, depth: 9, outline: false },
               // Жёлтый «!» над каждым столбиком простоя
               datalabels: {
                 display: (ctx) => ctx.datasetIndex === st.downIdx() && !!st.downLabels[ctx.dataIndex],

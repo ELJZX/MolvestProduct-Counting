@@ -1,16 +1,18 @@
 {% load report_tags %}
 <div class="report-panel" id="panel-{{ tab }}" data-tab="{{ tab }}"{% if tab != 'shift' %} style="display:none"{% endif %}>
   <div class="mb-3">
-    <div class="report-types">
+    {# Выбор типа отчёта — кнопки (по аналогии с вкладками Смена/Сутки/...) #}
+    <div class="report-types rb-types" role="group" aria-label="Тип отчёта">
       {% for t, lbl in types|zip_lists:type_labels %}
-        <div class="form-check form-check-inline">
-          {# radio внутри label, без id/for: страница не прыгает к первому блоку #}
-          <label class="form-check-label report-type-label">
-            <input class="form-check-input report-type" type="radio" name="rtype_{{ tab }}"
-                   value="{{ t }}"{% if forloop.first %} checked{% endif %}>
-            <span>{{ lbl|default:t }}</span>
-          </label>
-        </div>
+      <button type="button" class="rb-type-btn{% if forloop.first %} active{% endif %}"
+              data-type="{{ t }}">{{ lbl|default:t }}</button>
+      {% endfor %}
+    </div>
+    {# Радио-состояние (скрытое) — его читает reports.js при формировании #}
+    <div class="rb-type-radios d-none">
+      {% for t, lbl in types|zip_lists:type_labels %}
+      <input class="form-check-input report-type" type="radio" name="rtype_{{ tab }}"
+             value="{{ t }}"{% if forloop.first %} checked{% endif %}>
       {% endfor %}
     </div>
   </div>
@@ -34,7 +36,7 @@
         <input type="date" class="form-control" name="date" value="{{ today }}">
       </div>
     {% elif tab == 'month' %}
-      <div class="col-md-6">
+      <div class="col-md-4">
         <label class="form-label mb-1 d-block">Месяц</label>
         <select class="form-select" name="month">
           <option value="1">Январь</option><option value="2">Февраль</option>
@@ -45,26 +47,40 @@
           <option value="11">Ноябрь</option><option value="12">Декабрь</option>
         </select>
       </div>
-      <div class="col-md-6">
+      <div class="col-md-4">
         <label class="form-label mb-1 d-block">Год</label>
         <select class="form-select" name="year">
           {% for y in years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label mb-1 d-block">Смена</label>
+        <select class="form-select" name="shift">
+          <option value="1">Смена 1 (00:00–07:59)</option>
+          <option value="2">Смена 2 (08:00–23:59)</option>
         </select>
       </div>
     {% elif tab == 'quarter' %}
-      <div class="col-md-6">
+      <div class="col-md-4">
         <label class="form-label mb-1 d-block">Год</label>
         <select class="form-select" name="year">
           {% for y in years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
         </select>
       </div>
-      <div class="col-md-6">
+      <div class="col-md-4">
         <label class="form-label mb-1 d-block">Квартал</label>
         <select class="form-select" name="quarter">
           <option value="1">I (янв–март)</option>
           <option value="2">II (апр–июнь)</option>
-          <option value="3">III (июл–сент)</option>
+          <option value="3">III (июл–сен)</option>
           <option value="4">IV (окт–дек)</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label mb-1 d-block">Смена</label>
+        <select class="form-select" name="shift">
+          <option value="1">Смена 1 (00:00–07:59)</option>
+          <option value="2">Смена 2 (08:00–23:59)</option>
         </select>
       </div>
     {% elif tab == 'year' %}
@@ -72,6 +88,13 @@
         <label class="form-label mb-1 d-block">Год</label>
         <select class="form-select" name="year">
           {% for y in years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label mb-1 d-block">Смена</label>
+        <select class="form-select" name="shift">
+          <option value="1">Смена 1 (00:00–07:59)</option>
+          <option value="2">Смена 2 (08:00–23:59)</option>
         </select>
       </div>
     {% elif tab == 'period' %}
@@ -86,8 +109,15 @@
         <label class="form-label mb-1 d-block">Конец</label>
         <input type="datetime-local" class="form-control" name="end" value="{{ now_local }}">
       </div>
-      <div class="col-12 d-grid">
-        <button type="button" class="btn btn-outline-primary btn-full-period">Весь период</button>
+      <div class="col-md-6">
+        <label class="form-label mb-1 d-block">Смена</label>
+        <select class="form-select" name="shift">
+          <option value="1">Смена 1 (00:00–07:59)</option>
+          <option value="2">Смена 2 (08:00–23:59)</option>
+        </select>
+      </div>
+      <div class="col-md-6 d-grid">
+        <button type="button" class="btn btn-outline-primary btn-full-period align-self-end">Весь период</button>
       </div>
     {% endif %}
   </div>

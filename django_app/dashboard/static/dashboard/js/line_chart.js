@@ -37,7 +37,8 @@
   const FALLBACK_MINUTES = 120; // если задания нет — окно 2 часа
   const DEFAULT_STEP = 0;       // индекс шага в MolvestZoom: 10 минут
   const POLL_MS = 1000;         // обновление раз в секунду (реальное время)
-  const DOWN_MIN_VALUE = 1;     // минимальная отрисовка простоя (1–2 ед.)
+  const DOWN_PERCENT = 0.05;    // высота столбика простоя: 5% от самого
+                                // высокого столбца продукции на графике
 
   let chart = null;
   let zoomApi = null;
@@ -354,6 +355,13 @@
     return -1;
   }
 
+  // Толщина чёрной окантовки столбцов: в оконном режиме — 1px, при
+  // максимальном уменьшении («Весь период») — 0 (чтобы не чернить график).
+  function barBorderWidth(ctx) {
+    const z = ctx && ctx.chart && ctx.chart._molvestZoom;
+    return z && z.isFullPeriod() ? 0 : 1;
+  }
+
   function syncProductDatasets() {
     if (!chart) return;
     const codes = new Set();
@@ -380,7 +388,8 @@
         _code: code,
         data: [],
         backgroundColor: (p && p.color) ? p.color : EMPTY_COLOR,
-        borderWidth: 0,
+        borderWidth: barBorderWidth,
+        borderColor: 'rgba(0,0,0,0.75)',
         borderRadius: 0,
         barPercentage: 1.0,
         categoryPercentage: 1.0,
@@ -411,12 +420,10 @@
       ? Molvest3D.yAxisMax(maxCount)
       : Math.max(1, Math.ceil(maxCount * 1.4));
 
-    // Чёрная окантовка столбиков — только в оконном режиме; при
-    // максимальном уменьшении («Весь период») убираем, чтобы не чернить график
-    chart.options.plugins.molvest3d.outline = zoomApi ? !zoomApi.isFullPeriod() : true;
-
-    // Данные простоя: минимальные столбики (1–2 ед.) на каждой минуте
-    // простоя; над каждым — жёлтый «!»; при наведении — период простоя
+    // Данные простоя: столбики высотой 5% от максимального столбца продукции
+    // на каждой минуте простоя; над каждым — жёлтый «!»; при наведении —
+    // период простоя
+    const downValue = Math.max(1, Math.round(maxCount * DOWN_PERCENT));
     const downData = new Array(slice.length).fill(0);
     downTexts = {};
     downLabels = {};
@@ -426,7 +433,7 @@
       downColumns.forEach((c) => {
         const local = c.idx - w.min;
         if (local >= 0 && local < slice.length) {
-          downData[local] = DOWN_MIN_VALUE;
+          downData[local] = downValue;
           downTexts[local] = c.text;
           downLabels[local] = '!';
         }
@@ -451,7 +458,6 @@
     if (di !== -1) {
       chart.data.datasets[di].data = downData;
       chart.data.datasets[di].backgroundColor = stripesPattern;
-      chart.data.datasets[di].borderWidth = 0;
     }
     chart.update('none');
     updateProductIndicator();
@@ -468,7 +474,7 @@
           // датасеты продуктов добавляются динамически (syncProductDatasets);
           // датасет простоя всегда последний
           { label: 'Простой', data: [], _down: true, backgroundColor: stripesPattern,
-            borderWidth: 0, borderRadius: 0,
+            borderWidth: barBorderWidth, borderColor: 'rgba(0,0,0,0.75)', borderRadius: 0,
             barPercentage: 1.0, categoryPercentage: 1.0, stack: 'main', molvest3d: false },
         ],
       },
@@ -480,8 +486,9 @@
           // Легенда скрыта: вместо неё — чекбокс «Отображать график простоя»
           legend: { display: false },
           tooltip: { enabled: false, external: tooltipHandler },
-          // 3D-столбцы (только для продукции; простой — плоские столбики)
-          molvest3d: { enabled: true, depth: 9, outline: true },
+          // 2D-столбцы: 3D-эффект отключён (enabled: false) — плоские
+          // непрозрачные столбцы цветом продукта, без «прозрачности»
+          molvest3d: { enabled: false, depth: 9, outline: false },
           // Жёлтый «!» над каждым столбиком простоя
           datalabels: {
             display: (ctx) => ctx.datasetIndex === downDsIndex() && !!downLabels[ctx.dataIndex],

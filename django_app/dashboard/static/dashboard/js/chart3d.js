@@ -57,11 +57,29 @@
   // Рисует один 3D-столбец. x — центр столбца, top/bottom — пиксели (canvas: y вниз)
   function draw3DBar(ctx, x, top, bottom, w, color, depth, outline) {
     if (bottom - top < 1 || w < 1) return;
-    var d = Math.max(3, Math.min(depth || 8, w * 1.2));
+    // Выдавливание 3D — пропорционально ширине столбца (без жёсткого минимума).
+    // Для очень узких столбцов (максимальное уменьшение, «Весь период») 3D-грани
+    // не рисуем вообще — только плоский непрозрачный столбец: иначе выдавливание
+    // накладывается на соседние столбцы, и график выглядит полупрозрачным
+    // (видно соседний столбец сквозь текущий).
+    var d = Math.min(depth || 8, w * 0.8);
+    if (d < 2) {
+      // плоский непрозрачный столбец без 3D-граней
+      ctx.fillStyle = color;
+      ctx.fillRect(x - w / 2, top, w, bottom - top);
+      if (outline !== false && w >= 3) {
+        ctx.strokeStyle = 'rgba(0,0,0,.75)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x - w / 2 + .5, top + .5, w - 1, Math.max(0, bottom - top - 1));
+      }
+      return;
+    }
     var dx = d * 0.75;
     var dy = d * 0.75;
-    var light = shade(color, 0.25);
-    var dark = shade(color, -0.3);
+    // Лёгкое затемнение/осветление граней 3D (без ухода в белый/чёрный —
+    // столбцы остаются насыщенными и непрозрачными)
+    var light = shade(color, 0.12);
+    var dark = shade(color, -0.18);
 
     // правая грань (тёмная)
     ctx.fillStyle = dark;
@@ -73,7 +91,7 @@
     ctx.closePath();
     ctx.fill();
 
-    // верхняя грань (самая светлая)
+    // верхняя грань (чуть светлее)
     ctx.fillStyle = light;
     ctx.beginPath();
     ctx.moveTo(x - w / 2, top);
@@ -83,11 +101,9 @@
     ctx.closePath();
     ctx.fill();
 
-    // фронтальная грань — вертикальный градиент (светлее сверху)
-    var grad = ctx.createLinearGradient(0, top, 0, bottom);
-    grad.addColorStop(0, shade(color, 0.1));
-    grad.addColorStop(1, shade(color, -0.06));
-    ctx.fillStyle = grad;
+    // фронтальная грань — СПЛОШНОЙ непрозрачный цвет продукта (без градиента,
+    // чтобы столбцы не выглядели полупрозрачными/выцветшими)
+    ctx.fillStyle = color;
     ctx.fillRect(x - w / 2, top, w, bottom - top);
 
     // тонкая чёрная окантовка по периметру столбца (чтобы слипшиеся
@@ -149,6 +165,7 @@
     // график.
     afterDatasetsDraw: function (chart) {
       var o = (chart.options && chart.options.plugins && chart.options.plugins.molvest3d) || {};
+      if (o.enabled !== true) return;    // плагин выключен — ничего не рисуем
       if (o.outline === false) return;
       var ctx = chart.ctx;
       ctx.save();

@@ -50,6 +50,19 @@ def _finalize_sheet(ws):
     ws.protection.selectUnlockedCells = True
 
 
+def _apply_table_page_setup(ws):
+    """Страница табличных отчётов: ВЕРТИКАЛЬНЫЙ формат A4; таблица вписывается
+    по ширине (масштабируется в одну страницу по горизонтали, по вертикали
+    страницы добавляются по мере роста таблицы).
+    """
+    from openpyxl.worksheet.properties import PageSetupProperties
+    ws.page_setup.orientation = 'portrait'
+    ws.page_setup.paperSize = 9  # A4
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)
+
+
 def _protect_workbook(wb):
     """Защита структуры книги: нельзя добавлять/удалять/переименовывать листы."""
     wb.security.lockStructure = True
@@ -260,12 +273,13 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
                 cell.border = border
                 cell.alignment = Alignment(horizontal='center', vertical='center')
 
-    # 7) Данные (с окантовкой)
+    # 7) Данные (с окантовкой и переносом длинного текста)
     for row in table.get('rows') or []:
         row_idx = ws.max_row + 1
         ws.append([_fmt_cell(v) for v in row])
         for cell in ws[row_idx]:
             cell.border = border
+            cell.alignment = Alignment(wrap_text=True, vertical='top')
 
     # 8) Итог — жирный, с окантовкой
     if table.get('total_row'):
@@ -274,6 +288,7 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
         for cell in ws[row_idx]:
             cell.font = Font(bold=True)
             cell.border = border
+            cell.alignment = Alignment(wrap_text=True, vertical='top')
 
     if table.get('note'):
         ws.append([])
@@ -293,7 +308,10 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
                     col_lens[i] = max(col_lens[i], len(str(cell)))
         caps = []
         for ln in col_lens:
-            width = min(70, max(8, int(ln * 1.2) + 2))
+            # Ширина ограничена 45 символами: длинные наименования продуктов
+            # переносятся на новую строку внутри ячейки (wrap_text=True),
+            # а таблица остаётся узкой и влезает в вертикальный A4
+            width = min(45, max(8, int(ln * 1.2) + 2))
             caps.append(width)
         for col_idx, width in enumerate(caps, start=1):
             ws.column_dimensions[get_column_letter(col_idx)].width = width
@@ -305,6 +323,7 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
                     cell.alignment = Alignment(wrap_text=True, vertical='top')
 
     ws.freeze_panes = f'A{header_row + 1}'
+    _apply_table_page_setup(ws)
     _finalize_sheet(ws)
 
 
@@ -621,18 +640,21 @@ def export_reports_bundle_xlsx(items):
                 ws.append([_fmt_cell(v) for v in row])
                 for cell in ws[row_idx]:
                     cell.border = border
+                    cell.alignment = Alignment(wrap_text=True, vertical='top')
             if table.get('total_row'):
                 row_idx = ws.max_row + 1
                 ws.append([_fmt_cell(v) for v in table['total_row']])
                 for cell in ws[row_idx]:
                     cell.font = Font(bold=True)
                     cell.border = border
+                    cell.alignment = Alignment(wrap_text=True, vertical='top')
             if table.get('note'):
                 ws.append([])
                 ws.append([table['note']])
             ws.append([])  # разделитель между таблицами
 
-        # Ширина колонок — по символам (максимум по всем таблицам листа)
+        # Ширина колонок — по символам (максимум по всем таблицам листа);
+        # ограничена 45 символами — длинные наименования переносятся в ячейке
         caps = {}
         for table in tables:
             columns = table.get('columns') or []
@@ -649,11 +671,12 @@ def export_reports_bundle_xlsx(items):
                     if i < len(col_lens):
                         col_lens[i] = max(col_lens[i], len(str(cell)))
             for i, ln in enumerate(col_lens, start=1):
-                caps[i] = max(caps.get(i, 0), min(70, max(8, int(ln * 1.2) + 2)))
+                caps[i] = max(caps.get(i, 0), min(45, max(8, int(ln * 1.2) + 2)))
         for col_idx, width in caps.items():
             ws.column_dimensions[get_column_letter(col_idx)].width = width
         if header_row:
             ws.freeze_panes = f'A{header_row + 1}'
+        _apply_table_page_setup(ws)
         _finalize_sheet(ws)
 
     _protect_workbook(wb)
