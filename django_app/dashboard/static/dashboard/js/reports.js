@@ -25,6 +25,33 @@
 
   let blocks = [];
 
+  // ------------------------------------------------------------------
+  // Модальные окна формирования отчёта: «Формирование отчета…» (затемнение
+  // всей страницы + панель сбоку со спиннером) и зелёное «Готово» (без
+  // затемнения). Общие для всех блоков страницы.
+  // ------------------------------------------------------------------
+  const loadingOverlay = $('reportLoadingOverlay');
+  const doneModal = $('reportDoneModal');
+
+  function showLoading() {
+    if (loadingOverlay) loadingOverlay.hidden = false;
+  }
+
+  function hideLoading() {
+    if (loadingOverlay) loadingOverlay.hidden = true;
+  }
+
+  function showDone() {
+    if (!doneModal) return;
+    doneModal.hidden = false;
+    clearTimeout(doneModal._t);
+    doneModal._t = setTimeout(() => { doneModal.hidden = true; }, 2000);
+  }
+
+  function hideDone() {
+    if (doneModal) doneModal.hidden = true;
+  }
+
   // Паттерн «красный с чёрными полосками» для столбцов простоя (общий для всех блоков)
   const _patternCanvas = document.createElement('canvas');
   _patternCanvas.width = 8;
@@ -440,7 +467,10 @@
       }
       st.chart.update('none');
     }
-    downInput.addEventListener('change', renderVisible);
+    downInput.addEventListener('change', () => {
+      if (st.chart) renderVisible();
+      (st.dailyCharts || []).forEach((cs) => { if (cs.renderVisible) cs.renderVisible(); });
+    });
 
     // --- построение графика блока ---
     function ensureDownDs() {
@@ -525,6 +555,12 @@
     }
 
     function renderChart(cfg) {
+      // «Месяц → График продукции»: подробные графики на каждый день
+      if (cfg && cfg.charts && cfg.charts.length) {
+        renderDailyCharts(cfg);
+        return;
+      }
+      destroyDailyCharts(); // был месячный отчёт — убираем дневные графики
       if (!cfg || !cfg.labels || !cfg.labels.length) {
         chartCard.classList.add('d-none');
         return;
@@ -600,6 +636,310 @@
       renderVisible();
     }
 
+    // ------------------------------------------------------------------
+    // «Месяц → График продукции»: подробные графики на каждый день месяца.
+    // Каждый день — отдельный минутный график (продукция + простой + зум).
+    // ------------------------------------------------------------------
+    st.dailyCharts = [];
+
+    function destroyDailyCharts() {
+      (st.dailyCharts || []).forEach((cs) => { if (cs.chart) cs.chart.destroy(); });
+      st.dailyCharts = [];
+      const container = node.querySelector('.rb-daily-charts');
+      if (container) container.remove();
+      const singleWrap = chartCard.querySelector('.chart-wrap');
+      const singleZoom = chartCard.querySelector('.rb-zoom');
+      if (singleWrap) singleWrap.style.display = '';
+      if (singleZoom) singleZoom.style.display = '';
+    }
+
+    function buildDailyChart(cfg) {
+      const container = node.querySelector('.rb-daily-charts');
+      if (!container) return null;
+      const wrap = document.createElement('div');
+      wrap.className = 'rb-daily-chart';
+      wrap.innerHTML = '<div class="rb-daily-title"></div>' +
+        '<div class="chart-wrap"><canvas></canvas></div>' +
+        '<div class="rb-zoom"></div>';
+      wrap.querySelector('.rb-daily-title').textContent = cfg.title || '';
+      container.appendChild(wrap);
+      const canvas = wrap.querySelector('canvas');
+      const zoomWrap = wrap.querySelector('.rb-zoom');
+
+      const cs = {
+        chart: null, chartApi: null,
+        fullLabels: [], fullData: [], chartDetails: [], chartColors: [],
+        visibleLabels: [], visibleDetails: [], visibleParts: [], visibleData: [],
+        minuteTs: [], fullDown: [], downColumns: [], downTexts: {}, downLabels: {},
+        parts: [], usesParts: false, codeToDs: {}, productsMap: {},
+      };
+      cs.downIdx = function () {
+        if (!cs.chart) return -1;
+        for (let i = 0; i < cs.chart.data.datasets.length; i++) {
+          if (cs.chart.data.datasets[i]._down) return i;
+        }
+        return -1;
+      };
+
+      // Заполнить состояние из конфигурации дня
+      cs.fullLabels = cfg.labels || [];
+      cs.fullData = (cfg.datasets && cfg.datasets[0] && cfg.datasets[0].data) || [];
+      cs.chartDetails = cfg.details || [];
+      cs.minuteTs = cfg.minute_ts || [];
+      cs.fullDown = cfg.downtime_by_day || [];
+      cs.downColumns = buildDownColumns(cs.minuteTs, cfg.downtime || [], cs.fullData);
+      cs.chartColors = (cfg.colors && cfg.colors.length === cs.fullData.length)
+        ? cfg.colors.slice()
+        : cs.chartDetails.map((d) => (d && d.color) || '#6c757d');
+      cs.productsMap = cfg.products || {};
+      cs.parts = (cfg.parts && cfg.parts.length === cs.fullLabels.length) ? cfg.parts : [];
+      cs.usesParts = cs.minuteTs.length > 0 && cs.parts.length === cs.fullLabels.length;
+
+      function csBorderWidth(ctx) {
+        const z = ctx && ctx.chart && ctx.chart._molvestZoom;
+        return z && z.isFullPeriod() ? 0 : 1;
+      }
+
+      function csDownIdx() { return cs.downIdx(); }
+
+      function dailyTooltipHandler(context) {
+        const { chart: ch, tooltip } = context;
+        const el = ensureReportTooltip();
+        if (!tooltip.dataPoints || !tooltip.dataPoints.length ||
+            !Number.isFinite(tooltip.caretX) || !Number.isFinite(tooltip.caretY)) {
+          hideTooltip();
+          return;
+        }
+        const idx = tooltip.dataPoints[0].dataIndex;
+        const pos = ch.canvas.getBoundingClientRect();
+        const px = pos.left + tooltip.caretX;
+        const py = pos.top + tooltip.caretY;
+        // Простой: «Простой / Код «888» / период / (длительность)»
+        if (cs.downTexts[idx]) {
+          const d = cs.downTexts[idx];
+          const codeHtml = d.code ? '<div class="tt-1c">Код «' + escapeHtml(d.code) + '»</div>' : '';
+          el.innerHTML = '<div class="tt-body tt-body-col"><div class="tt-noimg"><span class="badge text-bg-danger">↓</span></div>' +
+            '<div class="tt-text"><div class="tt-count text-danger">Простой</div>' + codeHtml +
+            '<div class="tt-time">' + d.startLabel + ' – ' + d.endLabel + '</div>' +
+            '<div class="tt-1c">(' + d.dur + ')</div></div></div>';
+          placeTooltip(el, px, py);
+          return;
+        }
+        const parts = (cs.visibleParts && cs.visibleParts[idx]) || [];
+        const d = cs.visibleDetails[idx] || null;
+        const value = (cs.visibleData && cs.visibleData[idx]) || 0;
+        const label = cs.visibleLabels[idx] || '';
+        if (parts.length > 1) {
+          const rows = parts.map((p) => {
+            const pp = cs.productsMap && cs.productsMap[p.code] ? cs.productsMap[p.code] : null;
+            return '<div class="tt-part">' +
+              '<span class="product-chip" style="background:' + ((pp && pp.color) || '#6c757d') + '">' + p.code + '</span>' +
+              '<span class="tt-part-count">' + Number(p.count || 0).toLocaleString('ru-RU') + ' шт.</span>' +
+              '</div>';
+          }).join('');
+          const dts = (d && d.ts) || '';
+          const timeText = (dts && dts.indexOf(':') !== -1) ? dts : label;
+          el.innerHTML = '<div class="tt-body tt-body-col"><div class="tt-text">' +
+            '<div class="tt-count">' + Number(value || 0).toLocaleString('ru-RU') + ' шт.</div>' +
+            (timeText ? '<div class="tt-time">' + escapeHtml(timeText) + '</div>' : '') +
+            '<div class="tt-parts">' + rows + '</div></div></div>';
+          placeTooltip(el, px, py);
+          return;
+        }
+        let imgHtml;
+        if (d && d.image) {
+          imgHtml = '<img class="tt-img" src="' + d.image + '" alt="">';
+        } else if (d && d.code) {
+          imgHtml = '<div class="tt-noimg"><span class="product-chip" style="background:' + (d.color || '#adb5bd') + '">' + d.code + '</span></div>';
+        } else {
+          imgHtml = '<div class="tt-noimg"><span class="badge text-bg-secondary">—</span></div>';
+        }
+        const dbg = d && d.code === '888' ? ' (Отладка)' : '';
+        el.innerHTML = '<div class="tt-body">' + imgHtml +
+          '<div class="tt-text">' +
+          '<div class="tt-count">' + Number(value || 0).toLocaleString('ru-RU') + ' шт.</div>' +
+          (label ? '<div class="tt-time">' + label + '</div>' : '') +
+          ((d && d.name) ? '<div class="tt-name">' + d.name + '</div>' : '') +
+          ((d && d.code) ? '<div class="tt-1c">Код продукта: ' + d.code + dbg + '</div>' : '') +
+          '</div></div>';
+        placeTooltip(el, px, py);
+      }
+
+      function renderVisible() {
+        if (!cs.chart) return;
+        const w = cs.chartApi ? cs.chartApi.getWindow() : { min: 0, max: Math.max(0, cs.fullLabels.length - 1) };
+        const slice = cs.fullLabels.slice(w.min, w.max + 1);
+        cs.visibleLabels = slice;
+        cs.visibleDetails = cs.chartDetails.slice(w.min, w.max + 1);
+        cs.visibleParts = cs.parts.slice(w.min, w.max + 1);
+        cs.visibleData = cs.fullData.slice(w.min, w.max + 1);
+        cs.chart.data.labels = slice;
+        let maxVal = cs.fullData.reduce((m, v) => Math.max(m, v || 0), 0);
+        if (cs.fullDown.length) maxVal = cs.fullDown.reduce((m, v) => Math.max(m, v || 0), maxVal);
+        cs.chart.options.scales.y.max = window.Molvest3D
+          ? Molvest3D.yAxisMax(maxVal) : Math.max(1, Math.ceil(maxVal * 1.4));
+        const isMinuteChart = cs.minuteTs.length > 0;
+        cs.chart.options.scales.x.stacked = isMinuteChart;
+        cs.chart.options.scales.y.stacked = isMinuteChart;
+        if (cs.usesParts) {
+          Object.keys(cs.codeToDs).forEach((code) => {
+            const ds = cs.chart.data.datasets[cs.codeToDs[code]];
+            if (!ds) return;
+            ds.data = cs.visibleData.map((_, i) => {
+              const parts = cs.visibleParts[i] || [];
+              for (let j = 0; j < parts.length; j++) {
+                if (parts[j].code === code) return parts[j].count || 0;
+              }
+              return 0;
+            });
+          });
+        } else {
+          cs.chart.data.datasets[0].data = cs.visibleData;
+          cs.chart.data.datasets[0].backgroundColor = cs.chartColors.slice(w.min, w.max + 1);
+        }
+        const di = cs.downIdx();
+        let downData;
+        if (isMinuteChart && di !== -1) {
+          const downValue = Math.max(1, Math.round(maxVal * 0.05));
+          downData = new Array(slice.length).fill(0);
+          if (downInput.checked) {
+            cs.downColumns.forEach((c) => {
+              const local = c.idx - w.min;
+              if (local >= 0 && local < slice.length) {
+                downData[local] = downValue;
+                cs.downTexts[local] = c.info;
+                cs.downLabels[local] = '!';
+              }
+            });
+          }
+          cs.chart.data.datasets[di].backgroundColor = stripesPattern;
+        } else if (di !== -1) {
+          downData = downInput.checked ? cs.fullDown.slice(w.min, w.max + 1) : new Array(slice.length).fill(0);
+          cs.chart.data.datasets[di].backgroundColor = stripesPattern;
+        } else {
+          downData = new Array(slice.length).fill(0);
+        }
+        if (di !== -1) cs.chart.data.datasets[di].data = downData;
+        cs.chart.update('none');
+      }
+
+      function ensureDownDs() {
+        if (cs.downIdx() !== -1) return;
+        cs.chart.data.datasets.push({
+          label: 'Простой', _down: true, data: [],
+          backgroundColor: stripesPattern, borderWidth: csBorderWidth,
+          borderColor: 'rgba(0,0,0,0.75)', borderRadius: 0,
+          barPercentage: 1.0, categoryPercentage: 1.0, stack: 'main', molvest3d: false,
+        });
+      }
+
+      function syncDatasets() {
+        if (!cs.chart) return;
+        ensureDownDs();
+        const codes = new Set();
+        if (cs.usesParts) {
+          cs.parts.forEach((parts) => (parts || []).forEach((p) => {
+            if (p && p.code) codes.add(p.code);
+          }));
+        }
+        cs.chart.data.datasets = cs.chart.data.datasets.filter((ds) => {
+          if (ds._down) return true;
+          if (ds._code && codes.has(ds._code)) return true;
+          delete cs.codeToDs[ds._code];
+          return false;
+        });
+        if (cs.usesParts) {
+          let insertIdx = cs.downIdx();
+          if (insertIdx === -1) insertIdx = cs.chart.data.datasets.length;
+          const sorted = Array.from(codes)
+            .sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0) || a.localeCompare(b));
+          sorted.forEach((code) => {
+            if (code in cs.codeToDs) return;
+            const p = cs.productsMap[code] || null;
+            cs.chart.data.datasets.splice(insertIdx, 0, {
+              label: 'Продукт ' + code, _code: code, data: [],
+              backgroundColor: (p && p.color) || '#6c757d',
+              borderWidth: csBorderWidth, borderColor: 'rgba(0,0,0,0.75)', borderRadius: 0,
+              barPercentage: 1.0, categoryPercentage: 1.0, stack: 'main',
+            });
+            insertIdx += 1;
+          });
+        } else {
+          if (!cs.chart.data.datasets.length || cs.chart.data.datasets[0]._down) {
+            cs.chart.data.datasets.splice(0, 0, {
+              label: 'Продукция', data: [], backgroundColor: [],
+              borderWidth: csBorderWidth, borderColor: 'rgba(0,0,0,0.75)', borderRadius: 0,
+              barPercentage: 1.0, categoryPercentage: 1.0, stack: 'main',
+            });
+          }
+        }
+        Object.keys(cs.codeToDs).forEach((k) => delete cs.codeToDs[k]);
+        cs.chart.data.datasets.forEach((ds, i) => {
+          if (!ds._down && ds._code) cs.codeToDs[ds._code] = i;
+        });
+      }
+
+      cs.chart = new Chart(canvas.getContext('2d'), {
+        type: cfg.type || 'bar',
+        data: { labels: cs.fullLabels.slice(), datasets: [] },
+        options: {
+          responsive: true, maintainAspectRatio: false, animation: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: { enabled: false, external: dailyTooltipHandler },
+            molvest3d: { enabled: false, depth: 9, outline: false },
+            datalabels: {
+              display: (ctx) => ctx.datasetIndex === csDownIdx() && !!cs.downLabels[ctx.dataIndex],
+              color: '#ffc107', textStrokeColor: 'rgba(0,0,0,0.85)', textStrokeWidth: 1.5,
+              anchor: 'end', align: 'end', offset: 1,
+              font: { weight: 'bold', size: 12 },
+              formatter: (value, ctx) => cs.downLabels[ctx.dataIndex] || '',
+            },
+          },
+          scales: {
+            x: { stacked: cs.usesParts, grid: { display: false }, ticks: { maxTicksLimit: 14, maxRotation: 0, autoSkip: true } },
+            y: { stacked: cs.usesParts, beginAtZero: true, ticks: { precision: 0 } },
+          },
+        },
+      });
+      if (window.MolvestZoom) {
+        cs.chartApi = MolvestZoom.attach(cs.chart, { container: zoomWrap, onWindow: renderVisible });
+      }
+      cs.chart.canvas.addEventListener('mouseleave', hideTooltip);
+      syncDatasets();
+      if (cs.chartApi) {
+        cs.chartApi.setData(cs.fullLabels.length);
+        if (cs.fullLabels.length > 100) cs.chartApi.setStep(1);
+      }
+      renderVisible();
+      cs.renderVisible = renderVisible;
+      return cs;
+    }
+
+    function renderDailyCharts(cfg) {
+      destroyDailyCharts();
+      const charts = cfg.charts || [];
+      if (!charts.length) { chartCard.classList.add('d-none'); return; }
+      chartCard.classList.remove('d-none');
+      // Единичный canvas/зум скрываем, показываем контейнер дневных графиков
+      const singleWrap = chartCard.querySelector('.chart-wrap');
+      const singleZoom = chartCard.querySelector('.rb-zoom');
+      if (singleWrap) singleWrap.style.display = 'none';
+      if (singleZoom) singleZoom.style.display = 'none';
+      let container = node.querySelector('.rb-daily-charts');
+      if (!container) {
+        container = document.createElement('div');
+        container.className = 'rb-daily-charts';
+        const body = chartCard.querySelector('.card-body');
+        if (body) body.appendChild(container);
+      }
+      container.innerHTML = '';
+      charts.forEach((dc) => {
+        const cs = buildDailyChart(dc);
+        if (cs) st.dailyCharts.push(cs);
+      });
+    }
+
     // --- формирование отчёта блока (Ajax) ---
     function setStatus(state, html) {
       statusEl.className = 'rb-status rb-status-' + state;
@@ -610,6 +950,7 @@
       const params = collectParams();
       // «Формирование…» — чёрный текст в жёлтой медленно мигающей окантовке
       setStatus('busy', 'Формирование…');
+      showLoading();
       try {
         const resp = await fetch('/reports/build/', {
           method: 'POST',
@@ -618,6 +959,7 @@
         });
         const data = await resp.json();
         if (!resp.ok || !data.ok) {
+          hideLoading();
           setStatus('err', '<span class="text-danger fw-semibold">Ошибка:</span> ' +
             escapeHtml(data.error || ('HTTP ' + resp.status)));
           return;
@@ -632,15 +974,15 @@
         renderChart(data.result.chart);
         // «Готово» — чёрный текст на зелёном фоне
         setStatus('ok', 'Готово');
+        hideLoading();
+        showDone();
         updateExportHint();
       } catch (e) {
+        hideLoading();
         setStatus('err', '<span class="text-danger fw-semibold">Ошибка:</span> ' + escapeHtml(e.message));
       }
     }
     node.querySelector('.rb-build').addEventListener('click', build);
-
-    // --- удаление блока ---
-    node.querySelector('.rb-remove').addEventListener('click', () => removeBlock(st));
 
     // Нумерация и добавление в контейнер
     node.querySelector('.rb-index').textContent = String(blocks.length + 1);
@@ -648,12 +990,37 @@
     blocks.push(st);
     refreshRemoveButtons();
     updateExportHint();
+
+    // --- «Сбросить отчет»: при одном отчёте — сброс, при нескольких — удаление ---
+    function resetBlock() {
+      if (st.chart) { st.chart.destroy(); st.chart = null; }
+      st.chartApi = null;
+      destroyDailyCharts();
+      st.fullLabels = []; st.fullData = []; st.chartDetails = []; st.chartColors = [];
+      st.visibleLabels = []; st.visibleDetails = []; st.visibleParts = [];
+      st.minuteTs = []; st.fullDown = []; st.downColumns = [];
+      st.downTexts = {}; st.downLabels = {};
+      st.parts = []; st.usesParts = false; st.codeToDs = {}; st.productsMap = {};
+      st.lastParams = null; st.lastReportId = null; st.built = false;
+      resultEl.classList.add('d-none');
+      tablesEl.innerHTML = '';
+      emptyEl.classList.add('d-none');
+      chartCard.classList.add('d-none');
+      statusEl.className = 'rb-status text-muted small';
+      statusEl.textContent = '';
+      updateExportHint();
+    }
+
+    node.querySelector('.rb-remove').addEventListener('click', () => {
+      if (blocks.length <= 1) { resetBlock(); } else { removeBlock(st); }
+    });
     return st;
   }
 
   function removeBlock(st) {
     if (blocks.length <= 1) return; // последний блок не удаляем
     if (st.chart) { st.chart.destroy(); st.chart = null; }
+    (st.dailyCharts || []).forEach((cs) => { if (cs.chart) cs.chart.destroy(); });
     st.node.remove();
     const i = blocks.indexOf(st);
     if (i !== -1) blocks.splice(i, 1);
@@ -664,9 +1031,12 @@
   }
 
   function refreshRemoveButtons() {
+    // Кнопка «Сбросить отчет»: при одном отчёте — сброс, при нескольких — удаление блока
     const single = blocks.length <= 1;
     blocks.forEach((b) => {
-      b.node.querySelector('.rb-remove').classList.toggle('d-none', single);
+      const btn = b.node.querySelector('.rb-remove');
+      if (!btn) return;
+      btn.title = single ? 'Сбросить текущий отчёт (очистить результат)' : 'Убрать этот отчёт из сравнения';
     });
   }
 

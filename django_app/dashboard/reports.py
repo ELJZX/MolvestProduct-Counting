@@ -621,6 +621,18 @@ def export_reports_bundle_xlsx(items):
                 ws[ws.max_row][0].alignment = Alignment(horizontal='center')
                 merge_row(ws.max_row)
             columns = table.get('columns') or []
+            table_cols = len(columns)
+
+            def stretch_row(row_idx):
+                """Узкая таблица на общем листе: пустые колонки справа
+                объединяются с последней ячейкой строки (строка растягивается
+                на всю ширину листа — таблица выглядит аккуратно, без
+                «лишних» пустых колонок)."""
+                if table_cols < ncols:
+                    ws.merge_cells(start_row=row_idx,
+                                   start_column=table_cols + 1,
+                                   end_row=row_idx, end_column=ncols)
+
             if columns:
                 two_row = (len(columns) >= 2
                            and str(columns[0]).startswith('Код')
@@ -649,6 +661,8 @@ def export_reports_bundle_xlsx(items):
                     for col in range(3, len(columns) + 1):
                         ws.merge_cells(start_row=r1, start_column=col,
                                        end_row=r2, end_column=col)
+                    stretch_row(r1)
+                    stretch_row(r2)
                 else:
                     ws.append(columns)
                     if header_row is None:
@@ -657,12 +671,14 @@ def export_reports_bundle_xlsx(items):
                         cell.font = header_font
                         cell.border = border
                         cell.alignment = Alignment(horizontal='center', vertical='center')
+                    stretch_row(ws.max_row)
             for row in table.get('rows') or []:
                 row_idx = ws.max_row + 1
                 ws.append([_fmt_cell(v) for v in row])
                 for cell in ws[row_idx]:
                     cell.border = border
                     cell.alignment = Alignment(wrap_text=True, vertical='top')
+                stretch_row(row_idx)
             if table.get('total_row'):
                 row_idx = ws.max_row + 1
                 ws.append([_fmt_cell(v) for v in table['total_row']])
@@ -670,6 +686,7 @@ def export_reports_bundle_xlsx(items):
                     cell.font = Font(bold=True)
                     cell.border = border
                     cell.alignment = Alignment(wrap_text=True, vertical='top')
+                stretch_row(row_idx)
             if table.get('note'):
                 ws.append([])
                 ws.append([table['note']])

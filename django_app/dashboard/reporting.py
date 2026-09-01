@@ -725,44 +725,45 @@ def build_report(tab, rtype, counter_id, params):
                 dp_rows,
                 total_row=['', '', 'ИТОГО', f'{dp_total:,}'.replace(',', ' ')]))
         elif rtype == 'chart':
-            # Сумма по дням + доминирующий продукт за день (для тултипов)
-            qs = (ProductionRecord.objects
-                  .filter(line=line, minute_start__gte=from_dt, minute_start__lt=to_dt)
-                  .annotate(day=_local_day(), code=F('assignment__product__code'),
-                            name=F('assignment__product__name'))
-                  .values('day', 'code', 'name')
-                  .annotate(total=Sum('count')))
-            by_day = {}
-            for r in qs:
-                day = _make_aware(r['day'])
-                if day not in by_day or r['total'] > by_day[day]['total']:
-                    by_day[day] = {'code': r['code'], 'name': r['name'], 'total': r['total']}
-            days = sorted(by_day.keys())
+            # «График продукции» за месяц: подробные минутные графики
+            # на каждый день месяца (день — отдельный график)
             products_map = _products_map()
-            details = []
-            for d in days:
-                code = by_day[d]['code']
-                p = products_map.get(code) if code else None
-                details.append({
-                    'code': code,
-                    'name': by_day[d]['name'] or (p['name'] if p else None),
-                    'color': p['color'] if p else '#6c757d',
-                    'image': p['image'] if p else None,
-                    'code_1c': p['code_1c'] if p else '',
-                    'ts': timezone.localtime(d).strftime('%d.%m.%Y'),
-                })
-            dt_by_day = dict(_downtime_by(line, from_dt, to_dt, 'day'))
+            charts = []
+            day_start = from_dt
+            while day_start < to_dt:
+                day_end = min(to_dt, day_start + datetime.timedelta(days=1))
+                series = services.build_minute_series(line, day_start, day_end)
+                events = services.downtime_events(line, day_start, day_end)
+                if any(s['count'] > 0 for s in series) or events:
+                    details = _chart_details_from_series(series, products_map)
+                    charts.append({
+                        'type': 'bar',
+                        'title': timezone.localtime(day_start).strftime('%d.%m.%Y'),
+                        'labels': [s['minute'] for s in series],
+                        'datasets': [{'label': 'Кол-во, шт./мин',
+                                      'data': [s['count'] for s in series]}],
+                        'details': details,
+                        'colors': [d['color'] for d in details],
+                        'parts': [s.get('parts') or [] for s in series],
+                        'products': products_map,
+                        'minute_ts': [s['ts'] for s in series],
+                        'downtime': [
+                            {
+                                'start': timezone.localtime(e['start']).isoformat(),
+                                'end': timezone.localtime(e['end']).isoformat(),
+                                'minutes': e['minutes'],
+                                'ongoing': e['ongoing'],
+                                'product_code': e['product_code'],
+                                'product_name': e['product_name'],
+                            }
+                            for e in events
+                        ],
+                    })
+                day_start = day_end
             chart = {
                 'type': 'bar',
                 'title': 'График продукции (по дням)',
-                'labels': [timezone.localtime(d).strftime('%d.%m') for d in days],
-                'datasets': [{'label': 'Кол-во, шт./день',
-                              'data': [by_day[d]['total'] for d in days]}],
-                'details': details,
-                'colors': [d['color'] for d in details],
-                'products': products_map,
-                # минуты простоя по дням (столбики второго датасета)
-                'downtime_by_day': [dt_by_day.get(d, 0) for d in days],
+                'charts': charts,
             }
             # График без текстовой плашки: таблиц нет, отображается только график
         elif rtype == 'downtime':

@@ -336,45 +336,54 @@ def _chart_day(paths, from_dt, to_dt, pmap):
 
 
 def _chart_month(paths, from_dt, to_dt, pmap):
-    by_day = {}
-    for r in _rows(paths, from_dt, to_dt):
-        d = _day_key(r['minute'])
-        item = by_day.setdefault(d, {'count': 0, 'prods': {}})
-        item['count'] += r['count']
-        if r['kod_str']:
-            item['prods'][r['kod_str']] = item['prods'].get(r['kod_str'], 0) + r['count']
-    days = sorted(by_day.keys())
-    tz = timezone.get_current_timezone()
-    details = []
-    for d in days:
-        prods = by_day[d]['prods']
-        dom = max(prods, key=prods.get) if prods else None
-        p = _prod_info(dom, pmap)
-        details.append({
-            'code': dom,
-            'name': p['name'],
-            'color': p['color'],
-            'image': p['image'],
-            'code_1c': p['code_1c'],
-            'ts': d.strftime('%d.%m.%Y'),
-        })
-    dt_by_day = {
-        timezone.localtime(k).date(): v
-        for k, v in _downtime_by(paths, from_dt, to_dt, 'day')
-    }
+    """«График продукции» за месяц: подробные минутные графики на каждый день."""
+    charts = []
+    day_start = from_dt
+    while day_start < to_dt:
+        day_end = min(to_dt, day_start + datetime.timedelta(days=1))
+        series = _minute_series(paths, day_start, day_end)
+        events = _downtime_events(paths, day_start, day_end)
+        if any(s['count'] > 0 for s in series) or events:
+            details = []
+            for pt in series:
+                p = _prod_info(pt['kod_str'], pmap)
+                details.append({
+                    'code': pt['kod_str'],
+                    'name': pt['kod_str'] and p['name'],
+                    'color': p['color'],
+                    'image': p['image'],
+                    'code_1c': p['code_1c'],
+                    'ts': pt['full_minute'],
+                })
+            charts.append({
+                'type': 'bar',
+                'title': timezone.localtime(day_start).strftime('%d.%m.%Y'),
+                'labels': [s['minute'] for s in series],
+                'datasets': [{'label': 'Кол-во, шт./мин',
+                              'data': [s['count'] for s in series]}],
+                'details': details,
+                'colors': [d['color'] for d in details],
+                'parts': [([{'code': pt['kod_str'], 'count': pt['count']}] if pt['kod_str'] else [])
+                          for pt in series],
+                'products': pmap,
+                'minute_ts': [s['ts'] for s in series],
+                'downtime': [
+                    {
+                        'start': timezone.localtime(e['start']).isoformat(),
+                        'end': timezone.localtime(e['end']).isoformat(),
+                        'minutes': e['minutes'],
+                        'ongoing': e['ongoing'],
+                        'product_code': e['product_code'],
+                        'product_name': e['product_name'],
+                    }
+                    for e in events
+                ],
+            })
+        day_start = day_end
     return {
         'type': 'bar',
         'title': 'График продукции (по дням)',
-        'labels': [timezone.localtime(
-            timezone.make_aware(datetime.datetime(d.year, d.month, d.day), tz)
-        ).strftime('%d.%m') for d in days],
-        'datasets': [{'label': 'Кол-во, шт./день',
-                      'data': [by_day[d]['count'] for d in days]}],
-        'details': details,
-        'colors': [d['color'] for d in details],
-        'products': pmap,
-        # минуты простоя по дням (столбики второго датасета)
-        'downtime_by_day': [dt_by_day.get(d, 0) for d in days],
+        'charts': charts,
     }
 
 

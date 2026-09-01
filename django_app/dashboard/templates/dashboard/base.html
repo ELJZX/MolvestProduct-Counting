@@ -4,10 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Молвест.Учет.Продукции{% endblock %} — {{ user.username|default:'Вход' }}</title>
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 {% load static %}
-<link rel="stylesheet" href="{% static 'dashboard/css/site.css' %}?v=21">
+<link rel="stylesheet" href="{% static 'dashboard/css/site.css' %}?v=22">
 </head>
 <body>
 {% if user.is_authenticated %}
@@ -58,17 +59,27 @@
         <span class="app-clock ms-2"><i class="bi bi-clock me-1"></i><span id="navbarClockTime">--:--:--</span></span>
       </span>
       {% if app_version %}<span class="app-version" title="Версия сборки">v{{ app_version }}</span>{% endif %}
-      <span class="text-light small app-user" title="{{ user.username }}">
-        <i class="bi bi-person-circle me-1"></i>{{ user.username }}
-      </span>
-      {% if user.profile.role == 'admin' %}
-      <a class="btn btn-outline-light btn-sm" href="/admin/" target="_blank">
-        <i class="bi bi-gear me-1"></i>Админка
-      </a>
-      {% endif %}
-      <a class="btn btn-outline-light btn-sm" href="{% url 'logout' %}">
-        <i class="bi bi-box-arrow-right me-1"></i>Выйти
-      </a>
+      {# Никнейм — выпадающее меню: «Админка» (для админа) и «Выйти» #}
+      <div class="btn-group app-user-drop">
+        <button type="button" class="btn btn-outline-light btn-sm dropdown-toggle app-user"
+                data-bs-toggle="dropdown" aria-expanded="false" title="{{ user.username }}">
+          <i class="bi bi-person-circle me-1"></i>{{ user.username }}
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end shadow">
+          {% if user.profile.role == 'admin' %}
+          <li>
+            <a class="dropdown-item" href="/admin/" target="_blank">
+              <i class="bi bi-gear me-1"></i>Админка
+            </a>
+          </li>
+          {% endif %}
+          <li>
+            <a class="dropdown-item" href="{% url 'logout' %}">
+              <i class="bi bi-box-arrow-right me-1"></i>Выйти
+            </a>
+          </li>
+        </ul>
+      </div>
     </div>
   </div>
 </nav>

@@ -10,7 +10,8 @@
     {% if is_admin %}
     <form method="post" action="{% url 'reports_toggle_source' %}" class="d-inline" title="Переключить источник данных для отчётов">
       {% csrf_token %}
-      <button type="submit" class="btn btn-sm {% if data_source_dbf %}btn-outline-warning{% else %}btn-outline-primary{% endif %}">
+      {# Файлы DBF — всегда жёлтая кнопка с чёрным текстом; БД — всегда синяя с белым #}
+      <button type="submit" class="btn btn-sm {% if data_source_dbf %}btn-warning{% else %}btn-primary{% endif %}">
         <i class="bi bi-arrow-left-right me-1"></i>Источник: {{ data_source_label }}
       </button>
     </form>
@@ -18,7 +19,7 @@
     <span class="text-muted small">Источник: <span class="fw-semibold">{{ data_source_label }}</span></span>
     {% endif %}
     <div class="btn-group">
-      <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" id="btnExportToggle">
+      <button type="button" class="btn btn-sm btn-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" id="btnExportToggle">
         <i class="bi bi-download me-1"></i>Выгрузить отчёты
       </button>
       <ul class="dropdown-menu dropdown-menu-end">
@@ -41,8 +42,8 @@
   <div class="card shadow-sm report-block">
     <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span><i class="bi bi-file-earmark-text me-1"></i>Отчет <span class="rb-index"></span></span>
-      <button type="button" class="btn btn-sm btn-outline-danger rb-remove" title="Удалить этот отчёт">
-        <i class="bi bi-x-lg"></i> Удалить
+      <button type="button" class="btn btn-sm btn-outline-danger rb-remove" title="Сбросить текущий отчёт / убрать блок">
+        <i class="bi bi-arrow-counterclockwise me-1"></i><span class="rb-remove-text">Сбросить отчет</span>
       </button>
     </div>
     <div class="card-body">
@@ -107,9 +108,20 @@
   </div>
 </template>
 
+{# ---- Модальное окно «Формирование отчета…» (сбоку, со спиннером) и «Готово» ---- #}
+<div class="report-loading-overlay" id="reportLoadingOverlay" hidden>
+  <div class="report-side-modal">
+    <div class="report-spinner" aria-hidden="true"></div>
+    <div class="report-side-text">Формирование отчета...</div>
+  </div>
+</div>
+<div class="report-done-modal" id="reportDoneModal" hidden>
+  <i class="bi bi-check-circle-fill me-2" aria-hidden="true"></i>Готово
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script src="{% static 'dashboard/js/chart_zoom.js' %}?v=9"></script>
 <script src="{% static 'dashboard/js/chart3d.js' %}?v=18"></script>
-<script src="{% static 'dashboard/js/reports.js' %}?v=30"></script>
+<script src="{% static 'dashboard/js/reports.js' %}?v=32"></script>
 {% endblock %}
