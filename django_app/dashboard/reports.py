@@ -251,16 +251,31 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
                    and str(columns[0]).startswith('Код')
                    and str(columns[1]).startswith('Заводской'))
         if two_row:
+            # Двухстрочная шапка «Код:»: 1-я строка — «Код:» (объединено по
+            # 2 колонкам) и остальные заголовки; 2-я строка — «Продукта |
+            # Заводской». Под остальными колонками пустые ячейки 2-й строки
+            # объединяются по вертикали с 1-й, чтобы не было пустой строки.
+            r1 = ws.max_row + 1
             ws.append(['Код:', ''] + list(columns[2:]))
-            ws.merge_cells(start_row=ws.max_row, start_column=1,
-                           end_row=ws.max_row, end_column=2)
-            header_row = ws.max_row
-            for cell in ws[header_row]:
+            ws.merge_cells(start_row=r1, start_column=1,
+                           end_row=r1, end_column=2)
+            header_row = r1
+            for cell in ws[r1]:
                 cell.font = header_font
                 cell.border = border
                 cell.alignment = Alignment(horizontal='center', vertical='center')
+            r2 = ws.max_row + 1
             ws.append(['Продукта', 'Заводской'] + [''] * max(0, len(columns) - 2))
-            header_row = ws.max_row
+            header_row = r2
+            for cell in ws[r2]:
+                cell.font = header_font
+                cell.border = border
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+            # Вертикальное объединение ячеек 1-й и 2-й строки под остальными
+            # колонками (заголовок занимает обе строки, пустой строки нет)
+            for col in range(3, ncols + 1):
+                ws.merge_cells(start_row=r1, start_column=col,
+                               end_row=r2, end_column=col)
             for cell in ws[header_row]:
                 cell.font = header_font
                 cell.border = border
@@ -308,10 +323,10 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
                     col_lens[i] = max(col_lens[i], len(str(cell)))
         caps = []
         for ln in col_lens:
-            # Ширина ограничена 45 символами: длинные наименования продуктов
+            # Ширина ограничена 30 символами: длинные наименования продуктов
             # переносятся на новую строку внутри ячейки (wrap_text=True),
-            # а таблица остаётся узкой и влезает в вертикальный A4
-            width = min(45, max(8, int(ln * 1.2) + 2))
+            # таблица остаётся узкой и помещается в вертикальный A4
+            width = min(30, max(8, int(ln * 1.2) + 2))
             caps.append(width)
         for col_idx, width in enumerate(caps, start=1):
             ws.column_dimensions[get_column_letter(col_idx)].width = width
@@ -611,22 +626,29 @@ def export_reports_bundle_xlsx(items):
                            and str(columns[0]).startswith('Код')
                            and str(columns[1]).startswith('Заводской'))
                 if two_row:
+                    # Двухстрочная шапка «Код:» — пустые ячейки 2-й строки под
+                    # остальными колонками объединяются с 1-й (нет пустой строки)
+                    r1 = ws.max_row + 1
                     ws.append(['Код:', ''] + list(columns[2:]))
-                    ws.merge_cells(start_row=ws.max_row, start_column=1,
-                                   end_row=ws.max_row, end_column=2)
+                    ws.merge_cells(start_row=r1, start_column=1,
+                                   end_row=r1, end_column=2)
                     if header_row is None:
-                        header_row = ws.max_row
-                    for cell in ws[ws.max_row]:
+                        header_row = r1
+                    for cell in ws[r1]:
                         cell.font = header_font
                         cell.border = border
                         cell.alignment = Alignment(horizontal='center', vertical='center')
+                    r2 = ws.max_row + 1
                     ws.append(['Продукта', 'Заводской'] + [''] * max(0, len(columns) - 2))
                     if header_row is None:
-                        header_row = ws.max_row
-                    for cell in ws[ws.max_row]:
+                        header_row = r2
+                    for cell in ws[r2]:
                         cell.font = header_font
                         cell.border = border
                         cell.alignment = Alignment(horizontal='center', vertical='center')
+                    for col in range(3, len(columns) + 1):
+                        ws.merge_cells(start_row=r1, start_column=col,
+                                       end_row=r2, end_column=col)
                 else:
                     ws.append(columns)
                     if header_row is None:
@@ -671,7 +693,7 @@ def export_reports_bundle_xlsx(items):
                     if i < len(col_lens):
                         col_lens[i] = max(col_lens[i], len(str(cell)))
             for i, ln in enumerate(col_lens, start=1):
-                caps[i] = max(caps.get(i, 0), min(45, max(8, int(ln * 1.2) + 2)))
+                caps[i] = max(caps.get(i, 0), min(30, max(8, int(ln * 1.2) + 2)))
         for col_idx, width in caps.items():
             ws.column_dimensions[get_column_letter(col_idx)].width = width
         if header_row:

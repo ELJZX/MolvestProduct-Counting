@@ -346,19 +346,24 @@ def downtime_events(path, from_dt, to_dt):
     """
     events = []
     run_start = None
+    run_code = None
     last = None
     for r in iter_minutes(path, from_dt, to_dt):
         m, count = r['minute'], r['count']
         if count == 0:
             if run_start is None:
                 run_start = m
+                # Код продукта, «выставленный» на линии во время простоя
+                # (запись минуты в файле DBF содержит код, который держит счётчик)
+                run_code = r.get('kod_str')
         else:
             if run_start is not None:
                 minutes = int((m - run_start).total_seconds() // 60)
                 if minutes > 1:
                     events.append({
                         'start': run_start, 'end': m, 'minutes': minutes,
-                        'ongoing': False, 'product_code': None, 'product_name': '—',
+                        'ongoing': False, 'product_code': run_code,
+                        'product_name': '—',
                     })
                 run_start = None
         last = m
@@ -367,7 +372,7 @@ def downtime_events(path, from_dt, to_dt):
         if minutes > 1:
             events.append({
                 'start': run_start, 'end': last + _MINUTE, 'minutes': minutes,
-                'ongoing': True, 'product_code': None, 'product_name': '—',
+                'ongoing': True, 'product_code': run_code, 'product_name': '—',
             })
     events.sort(key=lambda e: e['start'])
     return events

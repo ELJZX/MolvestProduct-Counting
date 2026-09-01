@@ -53,7 +53,7 @@
           {% for y in years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
         </select>
       </div>
-      <div class="col-md-4">
+      <div class="col-md-4 rb-shift-field">
         <label class="form-label mb-1 d-block">Смена</label>
         <select class="form-select" name="shift">
           <option value="1">Смена 1 (00:00–07:59)</option>
@@ -76,7 +76,7 @@
           <option value="4">IV (окт–дек)</option>
         </select>
       </div>
-      <div class="col-md-4">
+      <div class="col-md-4 rb-shift-field">
         <label class="form-label mb-1 d-block">Смена</label>
         <select class="form-select" name="shift">
           <option value="1">Смена 1 (00:00–07:59)</option>
@@ -90,7 +90,7 @@
           {% for y in years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
         </select>
       </div>
-      <div class="col-md-6">
+      <div class="col-md-6 rb-shift-field">
         <label class="form-label mb-1 d-block">Смена</label>
         <select class="form-select" name="shift">
           <option value="1">Смена 1 (00:00–07:59)</option>
@@ -109,15 +109,12 @@
         <label class="form-label mb-1 d-block">Конец</label>
         <input type="datetime-local" class="form-control" name="end" value="{{ now_local }}">
       </div>
-      <div class="col-md-6">
+      <div class="col-md-6 rb-shift-field">
         <label class="form-label mb-1 d-block">Смена</label>
         <select class="form-select" name="shift">
           <option value="1">Смена 1 (00:00–07:59)</option>
           <option value="2">Смена 2 (08:00–23:59)</option>
         </select>
-      </div>
-      <div class="col-md-6 d-grid">
-        <button type="button" class="btn btn-outline-primary btn-full-period align-self-end">Весь период</button>
       </div>
     {% endif %}
   </div>

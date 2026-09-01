@@ -154,21 +154,26 @@
   }
 
   // ------------------------------------------------------------------
-  // Маркеры простоя: на каждую минуту простоя — точка с текстом периода
-  // (столбик рисуется минимальной высоты, над ним — жёлтый «!»)
+  // Маркеры простоя: на каждую минуту простоя — точка с данными периода
+  // и кода продукта, выставленного на линии (столбик рисуется высотой 5%,
+  // над ним — жёлтый «!»; при наведении — «Простой / Код «888» / период /
+  // (длительность)»)
   // ------------------------------------------------------------------
   function buildDownColumns(series, events) {
     const markers = [];
     (events || []).forEach((ev) => {
       const start = new Date(ev.start).getTime();
       const end = new Date(ev.end).getTime();
-      const dur = fmtDuration(ev.minutes);
-      const text = 'Простой: ' + fmtDT(ev.start) + ' – ' + fmtDT(ev.end) +
-        ' · ' + dur;
+      const info = {
+        code: ev.product_code || null,
+        startLabel: fmtDT(ev.start),
+        endLabel: fmtDT(ev.end),
+        dur: fmtDuration(ev.minutes),
+      };
       for (let i = 0; i < series.length; i++) {
         const ts = new Date(series[i].ts).getTime();
         if (ts >= start && ts < end) {
-          markers.push({ idx: i, text: text });
+          markers.push({ idx: i, info: info });
         }
       }
     });
@@ -231,11 +236,18 @@
     const pos = ch.canvas.getBoundingClientRect();
     const px = pos.left + tooltip.caretX;
     const py = pos.top + tooltip.caretY;
-    // простои: hover по красно-полосатому столбцу
+    // простои: hover по красно-полосатому столбцу — «Простой / Код «888» /
+    // период / (длительность)»
     if (downTexts[idx]) {
-      el.innerHTML = '<div class="tt-body"><div class="tt-noimg"><span class="badge text-bg-danger">↓</span></div>' +
+      const d = downTexts[idx];
+      const codeHtml = d.code
+        ? '<div class="tt-1c">Код «' + escapeHtml(d.code) + '»</div>'
+        : '';
+      el.innerHTML = '<div class="tt-body tt-body-col"><div class="tt-noimg"><span class="badge text-bg-danger">↓</span></div>' +
         '<div class="tt-text"><div class="tt-count text-danger">Простой</div>' +
-        '<div class="tt-1c">' + downTexts[idx] + '</div></div></div>';
+        codeHtml +
+        '<div class="tt-time">' + d.startLabel + ' – ' + d.endLabel + '</div>' +
+        '<div class="tt-1c">(' + d.dur + ')</div></div></div>';
       placeTooltip(el, px, py);
       return;
     }
@@ -273,7 +285,10 @@
     }
     const nameHtml = p ? '<div class="tt-name">' + escapeHtml(p.name) + '</div>'
                        : '<div class="tt-name text-muted">нет данных о продукте</div>';
-    const codeHtml = code ? '<div class="tt-1c">Код продукта: ' + code + '</div>' : '';
+    // Код 888 («Отладка») помечается на графике в подсказке
+    const codeHtml = code
+      ? '<div class="tt-1c">Код продукта: ' + code + (code === '888' ? ' (Отладка)' : '') + '</div>'
+      : '';
     const code1cHtml = p ? '<div class="tt-1c">Код 1С: ' + escapeHtml(p.code_1c || '—') + '</div>' : '';
     el.innerHTML = '<div class="tt-body">' + imgHtml +
       '<div class="tt-text">' + totalHtml + timeHtml + nameHtml + codeHtml + code1cHtml + '</div></div>';
@@ -434,7 +449,7 @@
         const local = c.idx - w.min;
         if (local >= 0 && local < slice.length) {
           downData[local] = downValue;
-          downTexts[local] = c.text;
+          downTexts[local] = c.info;
           downLabels[local] = '!';
         }
       });

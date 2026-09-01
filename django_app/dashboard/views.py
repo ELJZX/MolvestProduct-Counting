@@ -214,7 +214,6 @@ def reports_page(request):
     now = timezone.now()
     now_local = timezone.localtime(now)
     years = list(range(now_local.year, now_local.year - 6, -1))
-    counters_json = []
     counter_options = []
 
     if cfg.data_source == SystemConfig.DATA_SOURCE_DBF:
@@ -233,15 +232,6 @@ def reports_page(request):
             # Актуальность файла: дата и время последнего редактирования
             if info.get('modified'):
                 label += (f' · обновлён {info["modified"].strftime("%d.%m.%Y %H:%M")}')
-            counters_json.append({
-                'id': code,
-                'name': f'Счётчик {code}',
-                'line': code,
-                'first_record': info['first'].isoformat() if info['first'] else None,
-                # «Весь период» в DBF должен брать последнюю дату в файле,
-                # а не текущее время (файлы могут заканчиваться раньше)
-                'now': info['last'].isoformat() if info['last'] else now.isoformat(),
-            })
             counter_options.append({'id': code, 'label': label})
         # В DBF дата/время по умолчанию — конец данных, а не «сейчас»,
         # иначе у свежедобавленного блока дата вне диапазона файлов → «нет счётчика»
@@ -251,21 +241,10 @@ def reports_page(request):
             years = list(range(latest_local.year, latest_local.year - 6, -1))
     else:
         for c in Counter.objects.select_related('line').order_by('id'):
-            first = (ProductionRecord.objects
-                     .filter(line=c.line).order_by('minute_start')
-                     .values_list('minute_start', flat=True).first())
-            counters_json.append({
-                'id': c.pk,
-                'name': c.name,
-                'line': c.line.name,
-                'first_record': first.isoformat() if first else None,
-                'now': now.isoformat(),
-            })
             counter_options.append({'id': c.pk, 'label': f'{c.name} ({c.line.name})'})
 
     return render(request, 'dashboard/reports.html', {
         'counter_options': counter_options,
-        'counters_json': json.dumps(counters_json, ensure_ascii=False),
         'years': years,
         'today': now_local.strftime('%Y-%m-%d'),
         'now_local': now_local.strftime('%Y-%m-%dT%H:%M'),

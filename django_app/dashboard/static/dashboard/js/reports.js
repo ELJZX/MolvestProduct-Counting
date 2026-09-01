@@ -18,10 +18,6 @@
   const MAX_REPORTS = 8;
   const EXPORT_FILE = { xlsx: 'reports_comparison.xlsx', csv: 'reports_comparison.csv' };
 
-  const counters = JSON.parse($('countersJson').textContent);
-  const counterById = {};
-  counters.forEach((c) => { counterById[c.id] = c; });
-
   const blocksContainer = $('reportBlocks');
   const blockTemplate = $('reportBlockTemplate');
   const btnAddReport = $('btnAddReport');
@@ -55,12 +51,6 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
-  function fmtLocalInput(dt) {
-    const pad = (n) => String(n).padStart(2, '0');
-    return dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate()) +
-      'T' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
-  }
-
   function fmtDT(iso) {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return '—';
@@ -86,26 +76,24 @@
       mm + ' ' + plural(mm, 'минута', 'минуты', 'минут');
   }
 
-  // Счётчик по значению select: в режиме БД это число (pk), в режиме DBF —
-  // строка-код (например '2044'). Пробуем оба варианта ключа.
-  function counterInfo(value) {
-    return counterById[value] || counterById[parseInt(value, 10)];
-  }
-
   // Маркеры простоя на минутном графике: каждая минута простоя — столбик
-  // с жёлтым «!» над ним; при наведении — период простоя.
+  // с жёлтым «!» над ним; при наведении — «Простой / Код «888» / период /
+  // (длительность)».
   function buildDownColumns(minuteTs, events, seriesData) {
     const markers = [];
     (events || []).forEach((ev) => {
       const start = new Date(ev.start).getTime();
       const end = new Date(ev.end).getTime();
-      const dur = fmtDuration(ev.minutes);
-      const text = 'Простой: ' + fmtDT(ev.start) + ' – ' + fmtDT(ev.end) +
-        ' · ' + dur;
+      const info = {
+        code: ev.product_code || null,
+        startLabel: fmtDT(ev.start),
+        endLabel: fmtDT(ev.end),
+        dur: fmtDuration(ev.minutes),
+      };
       for (let i = 0; i < minuteTs.length; i++) {
         const ts = new Date(minuteTs[i]).getTime();
         if (ts >= start && ts < end) {
-          markers.push({ idx: i, text: text, label: '!' });
+          markers.push({ idx: i, info: info, label: '!' });
         }
       }
     });
@@ -165,11 +153,17 @@
         if (tooltip.dataPoints[k].datasetIndex === st.downIdx()) { isDown = true; break; }
       }
       if (isDown) {
-        const val = dp.parsed.y || 0;
-        const text = st.downTexts[idx] || ('Простой: ' + fmtDuration(val));
-        el.innerHTML = '<div class="tt-body"><div class="tt-noimg"><span class="badge text-bg-danger">↓</span></div>' +
+        // «Простой / Код «888» / период / (длительность)»
+        const info = st.downTexts[idx] || null;
+        const codeHtml = (info && info.code)
+          ? '<div class="tt-1c">Код «' + escapeHtml(info.code) + '»</div>' : '';
+        const periodHtml = info
+          ? '<div class="tt-time">' + info.startLabel + ' – ' + info.endLabel + '</div>'
+          : '<div class="tt-1c">' + fmtDuration(dp.parsed.y || 0) + '</div>';
+        const durHtml = info ? '<div class="tt-1c">(' + info.dur + ')</div>' : '';
+        el.innerHTML = '<div class="tt-body tt-body-col"><div class="tt-noimg"><span class="badge text-bg-danger">↓</span></div>' +
           '<div class="tt-text"><div class="tt-count text-danger">Простой</div>' +
-          '<div class="tt-1c">' + text + '</div></div></div>';
+          codeHtml + periodHtml + durHtml + '</div></div>';
         placeTooltip(el, px, py);
         return;
       }
@@ -209,8 +203,10 @@
       }
       let prodHtml;
       if (d && d.name) {
+        // Код 888 («Отладка») помечается на графике в подсказке
+        const dbg = d.code === '888' ? ' (Отладка)' : '';
         prodHtml = '<div class="tt-name">' + d.name + '</div>' +
-          (d.code ? '<div class="tt-1c">Код продукта: ' + d.code + '</div>' : '') +
+          (d.code ? '<div class="tt-1c">Код продукта: ' + d.code + dbg + '</div>' : '') +
           (d.code_1c ? '<div class="tt-1c">Код 1С: ' + d.code_1c + '</div>' : '') +
           (d.color ? '<div class="tt-1c">Цвет: <span style="color:' + d.color + '">' + d.color + '</span></div>' : '');
       } else {
@@ -299,6 +295,14 @@
     switchTab('shift');
 
     // --- тип отчёта — кнопки (как вкладки Смена/Сутки/...) ---
+    // Поле «Смена» показывается только для «Отчёта по смене» (by_shift)
+    function applyShiftVisibility(panel) {
+      const shiftField = panel.querySelector('.rb-shift-field');
+      if (!shiftField) return;
+      const activeBtn = panel.querySelector('.rb-type-btn.active');
+      shiftField.style.display = (activeBtn && activeBtn.dataset.type === 'by_shift') ? '' : 'none';
+    }
+
     node.querySelectorAll('.rb-type-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const panel = btn.closest('.report-panel');
@@ -309,21 +313,11 @@
         panel.querySelectorAll('input.report-type').forEach((r) => {
           r.checked = (r.value === btn.dataset.type);
         });
+        applyShiftVisibility(panel);
       });
     });
-
-    // --- «Весь период» на вкладке «Период» ---
-    node.querySelectorAll('.btn-full-period').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const c = counterInfo(node.querySelector('.rb-counter').value);
-        if (!c) return;
-        const panel = node.querySelector('.report-panel[data-tab="period"]');
-        const start = panel.querySelector('input[name="start"]');
-        const end = panel.querySelector('input[name="end"]');
-        if (c.first_record && start) start.value = fmtLocalInput(new Date(c.first_record));
-        if (c.now && end) end.value = fmtLocalInput(new Date(c.now));
-      });
-    });
+    // начальное состояние: «Смена» скрыта, пока не выбран «Отчёт по смене»
+    panels.forEach(applyShiftVisibility);
 
     // --- сбор параметров блока ---
     function collectParams() {
@@ -428,7 +422,7 @@
             const local = c.idx - w.min;
             if (local >= 0 && local < data.length) {
               downData[local] = downValue;
-              st.downTexts[local] = c.text;
+              st.downTexts[local] = c.info;
               st.downLabels[local] = '!';
             }
           });
@@ -607,9 +601,15 @@
     }
 
     // --- формирование отчёта блока (Ajax) ---
+    function setStatus(state, html) {
+      statusEl.className = 'rb-status rb-status-' + state;
+      statusEl.innerHTML = html;
+    }
+
     async function build() {
       const params = collectParams();
-      statusEl.innerHTML = 'Формирование…';
+      // «Формирование…» — чёрный текст в жёлтой медленно мигающей окантовке
+      setStatus('busy', 'Формирование…');
       try {
         const resp = await fetch('/reports/build/', {
           method: 'POST',
@@ -618,8 +618,8 @@
         });
         const data = await resp.json();
         if (!resp.ok || !data.ok) {
-          statusEl.innerHTML = '<span class="text-danger fw-semibold">Ошибка:</span> ' +
-            escapeHtml(data.error || ('HTTP ' + resp.status));
+          setStatus('err', '<span class="text-danger fw-semibold">Ошибка:</span> ' +
+            escapeHtml(data.error || ('HTTP ' + resp.status)));
           return;
         }
         st.lastParams = params;
@@ -630,10 +630,11 @@
         const hasChart = !!(data.result.chart && data.result.chart.labels && data.result.chart.labels.length);
         emptyEl.classList.toggle('d-none', !!data.html || hasChart);
         renderChart(data.result.chart);
-        statusEl.textContent = 'Готово.';
+        // «Готово» — чёрный текст на зелёном фоне
+        setStatus('ok', 'Готово');
         updateExportHint();
       } catch (e) {
-        statusEl.innerHTML = '<span class="text-danger fw-semibold">Ошибка:</span> ' + escapeHtml(e.message);
+        setStatus('err', '<span class="text-danger fw-semibold">Ошибка:</span> ' + escapeHtml(e.message));
       }
     }
     node.querySelector('.rb-build').addEventListener('click', build);
