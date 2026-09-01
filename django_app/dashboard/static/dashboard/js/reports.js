@@ -43,13 +43,21 @@
 
   function showDone() {
     if (!doneModal) return;
+    doneModal.className = 'report-done-modal';
+    doneModal.querySelector('.rb-done-text').textContent = 'Готово';
     doneModal.hidden = false;
     clearTimeout(doneModal._t);
     doneModal._t = setTimeout(() => { doneModal.hidden = true; }, 2000);
   }
 
-  function hideDone() {
-    if (doneModal) doneModal.hidden = true;
+  // Ошибка формирования — красное модальное окно (без затемнения)
+  function showError(msg) {
+    if (!doneModal) return;
+    doneModal.className = 'report-done-modal report-done-error';
+    doneModal.querySelector('.rb-done-text').textContent = 'Ошибка: ' + msg;
+    doneModal.hidden = false;
+    clearTimeout(doneModal._t);
+    doneModal._t = setTimeout(() => { doneModal.hidden = true; }, 5000);
   }
 
   // Паттерн «красный с чёрными полосками» для столбцов простоя (общий для всех блоков)
@@ -303,7 +311,6 @@
     }
 
     const downInput = node.querySelector('.rb-down-input');
-    const statusEl = node.querySelector('.rb-status');
     const resultEl = node.querySelector('.rb-result');
     const emptyEl = node.querySelector('.rb-empty');
     const tablesEl = node.querySelector('.rb-tables');
@@ -952,15 +959,9 @@
     }
 
     // --- формирование отчёта блока (Ajax) ---
-    function setStatus(state, html) {
-      statusEl.className = 'rb-status rb-status-' + state;
-      statusEl.innerHTML = html;
-    }
-
     async function build() {
       const params = collectParams();
-      // «Формирование…» — чёрный текст в жёлтой медленно мигающей окантовке
-      setStatus('busy', 'Формирование…');
+      // Индикация: модальное окно «Формирование отчета…» (затемнение + спиннер)
       showLoading();
       try {
         const resp = await fetch('/reports/build/', {
@@ -971,8 +972,7 @@
         const data = await resp.json();
         if (!resp.ok || !data.ok) {
           hideLoading();
-          setStatus('err', '<span class="text-danger fw-semibold">Ошибка:</span> ' +
-            escapeHtml(data.error || ('HTTP ' + resp.status)));
+          showError(data.error || ('HTTP ' + resp.status));
           return;
         }
         st.lastParams = params;
@@ -983,14 +983,13 @@
         const hasChart = !!(data.result.chart && data.result.chart.labels && data.result.chart.labels.length);
         emptyEl.classList.toggle('d-none', !!data.html || hasChart);
         renderChart(data.result.chart);
-        // «Готово» — чёрный текст на зелёном фоне
-        setStatus('ok', 'Готово');
+        // «Готово» — зелёное модальное окно (без затемнения)
         hideLoading();
         showDone();
         updateExportHint();
       } catch (e) {
         hideLoading();
-        setStatus('err', '<span class="text-danger fw-semibold">Ошибка:</span> ' + escapeHtml(e.message));
+        showError(e.message);
       }
     }
     node.querySelector('.rb-build').addEventListener('click', build);
@@ -1017,8 +1016,6 @@
       tablesEl.innerHTML = '';
       emptyEl.classList.add('d-none');
       chartCard.classList.add('d-none');
-      statusEl.className = 'rb-status text-muted small';
-      statusEl.textContent = '';
       updateExportHint();
     }
 

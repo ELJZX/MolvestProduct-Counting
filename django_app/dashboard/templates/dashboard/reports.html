@@ -80,7 +80,6 @@
         <button type="button" class="btn btn-primary px-4 rb-build">
           <i class="bi bi-file-earmark-text me-1"></i>Формировать
         </button>
-        <span class="rb-status text-muted small"></span>
       </div>
 
       <div class="rb-result mt-3 d-none">
@@ -116,12 +115,12 @@
   </div>
 </div>
 <div class="report-done-modal" id="reportDoneModal" hidden>
-  <i class="bi bi-check-circle-fill me-2" aria-hidden="true"></i>Готово
+  <i class="bi bi-check-circle-fill me-2" aria-hidden="true"></i><span class="rb-done-text">Готово</span>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script src="{% static 'dashboard/js/chart_zoom.js' %}?v=9"></script>
 <script src="{% static 'dashboard/js/chart3d.js' %}?v=18"></script>
-<script src="{% static 'dashboard/js/reports.js' %}?v=33"></script>
+<script src="{% static 'dashboard/js/reports.js' %}?v=34"></script>
 {% endblock %}

@@ -18,16 +18,11 @@ def _xlsx_style():
     )
 
 
-def _table_border(no_top=False):
-    """Тонкая окантовка таблицы отчёта.
-
-    no_top=True — для шапки таблицы: верхнюю границу не рисуем, чтобы под
-    шапкой отчёта (название/мета) не было лишней линии.
-    """
+def _table_border():
+    """Тонкая окантовка таблицы отчёта."""
     from openpyxl.styles import Border, Side
     thin = Side(style='thin', color='FF7F7F7F')
-    top = None if no_top else thin
-    return Border(left=thin, right=thin, top=top, bottom=thin)
+    return Border(left=thin, right=thin, top=thin, bottom=thin)
 
 
 def _finalize_sheet(ws):
@@ -260,7 +255,6 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
             # 2 колонкам) и остальные заголовки; 2-я строка — «Продукта |
             # Заводской». Под остальными колонками пустые ячейки 2-й строки
             # объединяются по вертикали с 1-й, чтобы не было пустой строки.
-            # Верхняя граница шапки не рисуется (нет линии под шапкой отчёта).
             r1 = ws.max_row + 1
             ws.append(['Код:', ''] + list(columns[2:]))
             ws.merge_cells(start_row=r1, start_column=1,
@@ -268,7 +262,7 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
             header_row = r1
             for cell in ws[r1]:
                 cell.font = header_font
-                cell.border = _table_border(no_top=True)
+                cell.border = border
                 cell.alignment = Alignment(horizontal='center', vertical='center')
             r2 = ws.max_row + 1
             ws.append(['Продукта', 'Заводской'] + [''] * max(0, len(columns) - 2))
@@ -291,7 +285,7 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
             header_row = ws.max_row
             for cell in ws[header_row]:
                 cell.font = header_font
-                cell.border = _table_border(no_top=True)
+                cell.border = border
                 cell.alignment = Alignment(horizontal='center', vertical='center')
 
     # 7) Данные (с окантовкой и переносом длинного текста)
@@ -629,15 +623,19 @@ def export_reports_bundle_xlsx(items):
             columns = table.get('columns') or []
             table_cols = len(columns)
 
-            def stretch_row(row_idx):
-                """Узкая таблица на общем листе: пустые колонки справа
-                объединяются с последней ячейкой строки (строка растягивается
-                на всю ширину листа — таблица выглядит аккуратно, без
-                «лишних» пустых колонок)."""
-                if table_cols < ncols:
-                    ws.merge_cells(start_row=row_idx,
-                                   start_column=table_cols + 1,
-                                   end_row=row_idx, end_column=ncols)
+            # Границы применяем ТОЛЬКО к колонкам таблицы (1..table_cols),
+            # иначе из-за мета-строк, объединённых на всю ширину листа, границы
+            # «уходят» в пустые колонки справа (полоса за пределами таблицы)
+            def style_row(row_idx, font=None, wrap=False, center=False):
+                for c in range(1, table_cols + 1):
+                    cell = ws.cell(row=row_idx, column=c)
+                    cell.border = border
+                    if font:
+                        cell.font = font
+                    if wrap:
+                        cell.alignment = Alignment(wrap_text=True, vertical='top')
+                    elif center:
+                        cell.alignment = Alignment(horizontal='center', vertical='center')
 
             if columns:
                 two_row = (len(columns) >= 2
@@ -652,47 +650,28 @@ def export_reports_bundle_xlsx(items):
                                    end_row=r1, end_column=2)
                     if header_row is None:
                         header_row = r1
-                    for cell in ws[r1]:
-                        cell.font = header_font
-                        cell.border = _table_border(no_top=True)
-                        cell.alignment = Alignment(horizontal='center', vertical='center')
+                    style_row(r1, font=header_font, center=True)
                     r2 = ws.max_row + 1
                     ws.append(['Продукта', 'Заводской'] + [''] * max(0, len(columns) - 2))
                     if header_row is None:
                         header_row = r2
-                    for cell in ws[r2]:
-                        cell.font = header_font
-                        cell.border = border
-                        cell.alignment = Alignment(horizontal='center', vertical='center')
+                    style_row(r2, font=header_font, center=True)
                     for col in range(3, len(columns) + 1):
                         ws.merge_cells(start_row=r1, start_column=col,
                                        end_row=r2, end_column=col)
-                    stretch_row(r1)
-                    stretch_row(r2)
                 else:
                     ws.append(columns)
                     if header_row is None:
                         header_row = ws.max_row
-                    for cell in ws[ws.max_row]:
-                        cell.font = header_font
-                        cell.border = _table_border(no_top=True)
-                        cell.alignment = Alignment(horizontal='center', vertical='center')
-                    stretch_row(ws.max_row)
+                    style_row(ws.max_row, font=header_font, center=True)
             for row in table.get('rows') or []:
                 row_idx = ws.max_row + 1
                 ws.append([_fmt_cell(v) for v in row])
-                for cell in ws[row_idx]:
-                    cell.border = border
-                    cell.alignment = Alignment(wrap_text=True, vertical='top')
-                stretch_row(row_idx)
+                style_row(row_idx, wrap=True)
             if table.get('total_row'):
                 row_idx = ws.max_row + 1
                 ws.append([_fmt_cell(v) for v in table['total_row']])
-                for cell in ws[row_idx]:
-                    cell.font = Font(bold=True)
-                    cell.border = border
-                    cell.alignment = Alignment(wrap_text=True, vertical='top')
-                stretch_row(row_idx)
+                style_row(row_idx, font=Font(bold=True), wrap=True)
             if table.get('note'):
                 ws.append([])
                 ws.append([table['note']])
