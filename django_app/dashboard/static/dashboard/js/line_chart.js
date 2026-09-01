@@ -428,17 +428,23 @@
     const w = zoomApi ? zoomApi.getWindow() : { min: 0, max: Math.max(0, fullSeries.length - 1) };
     const slice = fullSeries.slice(w.min, w.max + 1);
     currentSeries = slice;
-    const maxCount = fullSeries.reduce((mx, s) => Math.max(mx, s.count || 0), 0) || 1;
+    const maxCount = fullSeries.reduce((mx, s) => Math.max(mx, s.count || 0), 0);
+    // Если за весь период был только простой (продукции нет) — столбики
+    // простоя рисуем по 1–2 единицы, а ось Y оставляем с запасом
+    const noProduction = maxCount <= 0;
 
     // Запас по оси Y: максимум + 40% сверху (самый высокий столбец — ~71% высоты)
-    chart.options.scales.y.max = window.Molvest3D
-      ? Molvest3D.yAxisMax(maxCount)
-      : Math.max(1, Math.ceil(maxCount * 1.4));
+    chart.options.scales.y.max = noProduction
+      ? 10
+      : (window.Molvest3D ? Molvest3D.yAxisMax(maxCount)
+                          : Math.max(1, Math.ceil(maxCount * 1.4)));
 
     // Данные простоя: столбики высотой 5% от максимального столбца продукции
-    // на каждой минуте простоя; над каждым — жёлтый «!»; при наведении —
+    // (при полном простое — 1–2 единицы); над каждым — жёлтый «!» (только в
+    // оконном режиме; при «Весь период» «!» не рисуем); при наведении —
     // период простоя
-    const downValue = Math.max(1, Math.round(maxCount * DOWN_PERCENT));
+    const downValue = noProduction ? 2 : Math.max(1, Math.round(maxCount * DOWN_PERCENT));
+    const fullPeriod = zoomApi ? zoomApi.isFullPeriod() : false;
     const downData = new Array(slice.length).fill(0);
     downTexts = {};
     downLabels = {};
@@ -450,7 +456,7 @@
         if (local >= 0 && local < slice.length) {
           downData[local] = downValue;
           downTexts[local] = c.info;
-          downLabels[local] = '!';
+          if (!fullPeriod) downLabels[local] = '!';
         }
       });
     }

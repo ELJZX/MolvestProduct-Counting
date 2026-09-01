@@ -400,17 +400,21 @@
       st.visibleDetails = st.chartDetails.slice(w.min, w.max + 1);
       st.visibleParts = st.parts.slice(w.min, w.max + 1);
       st.chart.data.labels = labels;
-      // Запас по оси Y: максимум (продукция + простои) + 20% сверху
+      // Запас по оси Y: максимум (продукция + простои) + 20% сверху;
+      // если за весь период был только простой (продукции нет) — ось с запасом
       let maxVal = st.fullData.reduce((m, v) => Math.max(m, v || 0), 0);
       if (st.fullDown.length) maxVal = st.fullDown.reduce((m, v) => Math.max(m, v || 0), maxVal);
-      st.chart.options.scales.y.max = window.Molvest3D
-        ? Molvest3D.yAxisMax(maxVal)
-        : Math.max(1, Math.ceil(maxVal * 1.4));
+      const noProduction = maxVal <= 0;
+      st.chart.options.scales.y.max = noProduction
+        ? 10
+        : (window.Molvest3D ? Molvest3D.yAxisMax(maxVal)
+                            : Math.max(1, Math.ceil(maxVal * 1.4)));
       // Данные простоя: набор столбцов не скрываем (ширина столбцов не меняется),
       // при выключенном чекбоксе просто обнуляем значения
       const showDown = downInput.checked;
       st.downTexts = {};
       st.downLabels = {};
+      const fullPeriod = st.chartApi ? st.chartApi.isFullPeriod() : false;
       // Минутный график определяется по наличию поминутных меток (а не по
       // простоям): даже без простоев столбики должны стоять вплотную.
       // Оба датасета — в одном стеке: Chart.js не делит ширину категории
@@ -441,8 +445,9 @@
       const di = st.downIdx();
       if (isMinuteChart && di !== -1) {
         // минутный график: столбики простоя высотой 5% от максимального
-        // столбца продукции; над каждым — жёлтый «!»
-        const downValue = Math.max(1, Math.round(maxVal * 0.05));
+        // столбца продукции (при полном простое — 1–2 единицы); над каждым —
+        // жёлтый «!» (только в оконном режиме, при «Весь период» — без «!»)
+        const downValue = noProduction ? 2 : Math.max(1, Math.round(maxVal * 0.05));
         downData = new Array(data.length).fill(0);
         if (showDown) {
           st.downColumns.forEach((c) => {
@@ -450,7 +455,7 @@
             if (local >= 0 && local < data.length) {
               downData[local] = downValue;
               st.downTexts[local] = c.info;
-              st.downLabels[local] = '!';
+              if (!fullPeriod) st.downLabels[local] = '!';
             }
           });
         }
@@ -776,8 +781,12 @@
         cs.chart.data.labels = slice;
         let maxVal = cs.fullData.reduce((m, v) => Math.max(m, v || 0), 0);
         if (cs.fullDown.length) maxVal = cs.fullDown.reduce((m, v) => Math.max(m, v || 0), maxVal);
-        cs.chart.options.scales.y.max = window.Molvest3D
-          ? Molvest3D.yAxisMax(maxVal) : Math.max(1, Math.ceil(maxVal * 1.4));
+        const noProduction = maxVal <= 0;
+        cs.chart.options.scales.y.max = noProduction
+          ? 10
+          : (window.Molvest3D ? Molvest3D.yAxisMax(maxVal)
+                              : Math.max(1, Math.ceil(maxVal * 1.4)));
+        const fullPeriod = cs.chartApi ? cs.chartApi.isFullPeriod() : false;
         const isMinuteChart = cs.minuteTs.length > 0;
         cs.chart.options.scales.x.stacked = isMinuteChart;
         cs.chart.options.scales.y.stacked = isMinuteChart;
@@ -800,7 +809,9 @@
         const di = cs.downIdx();
         let downData;
         if (isMinuteChart && di !== -1) {
-          const downValue = Math.max(1, Math.round(maxVal * 0.05));
+          // столбики простоя 5% от максимума (при полном простое — 1–2 ед.);
+          // «!» — только в оконном режиме, при «Весь период» без «!»
+          const downValue = noProduction ? 2 : Math.max(1, Math.round(maxVal * 0.05));
           downData = new Array(slice.length).fill(0);
           if (downInput.checked) {
             cs.downColumns.forEach((c) => {
@@ -808,7 +819,7 @@
               if (local >= 0 && local < slice.length) {
                 downData[local] = downValue;
                 cs.downTexts[local] = c.info;
-                cs.downLabels[local] = '!';
+                if (!fullPeriod) cs.downLabels[local] = '!';
               }
             });
           }

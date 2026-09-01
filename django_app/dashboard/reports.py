@@ -18,11 +18,16 @@ def _xlsx_style():
     )
 
 
-def _table_border():
-    """Тонкая окантовка таблицы отчёта."""
+def _table_border(no_top=False):
+    """Тонкая окантовка таблицы отчёта.
+
+    no_top=True — для шапки таблицы: верхнюю границу не рисуем, чтобы под
+    шапкой отчёта (название/мета) не было лишней линии.
+    """
     from openpyxl.styles import Border, Side
     thin = Side(style='thin', color='FF7F7F7F')
-    return Border(left=thin, right=thin, top=thin, bottom=thin)
+    top = None if no_top else thin
+    return Border(left=thin, right=thin, top=top, bottom=thin)
 
 
 def _finalize_sheet(ws):
@@ -255,6 +260,7 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
             # 2 колонкам) и остальные заголовки; 2-я строка — «Продукта |
             # Заводской». Под остальными колонками пустые ячейки 2-й строки
             # объединяются по вертикали с 1-й, чтобы не было пустой строки.
+            # Верхняя граница шапки не рисуется (нет линии под шапкой отчёта).
             r1 = ws.max_row + 1
             ws.append(['Код:', ''] + list(columns[2:]))
             ws.merge_cells(start_row=r1, start_column=1,
@@ -262,7 +268,7 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
             header_row = r1
             for cell in ws[r1]:
                 cell.font = header_font
-                cell.border = border
+                cell.border = _table_border(no_top=True)
                 cell.alignment = Alignment(horizontal='center', vertical='center')
             r2 = ws.max_row + 1
             ws.append(['Продукта', 'Заводской'] + [''] * max(0, len(columns) - 2))
@@ -285,7 +291,7 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
             header_row = ws.max_row
             for cell in ws[header_row]:
                 cell.font = header_font
-                cell.border = border
+                cell.border = _table_border(no_top=True)
                 cell.alignment = Alignment(horizontal='center', vertical='center')
 
     # 7) Данные (с окантовкой и переносом длинного текста)
@@ -648,7 +654,7 @@ def export_reports_bundle_xlsx(items):
                         header_row = r1
                     for cell in ws[r1]:
                         cell.font = header_font
-                        cell.border = border
+                        cell.border = _table_border(no_top=True)
                         cell.alignment = Alignment(horizontal='center', vertical='center')
                     r2 = ws.max_row + 1
                     ws.append(['Продукта', 'Заводской'] + [''] * max(0, len(columns) - 2))
@@ -669,7 +675,7 @@ def export_reports_bundle_xlsx(items):
                         header_row = ws.max_row
                     for cell in ws[ws.max_row]:
                         cell.font = header_font
-                        cell.border = border
+                        cell.border = _table_border(no_top=True)
                         cell.alignment = Alignment(horizontal='center', vertical='center')
                     stretch_row(ws.max_row)
             for row in table.get('rows') or []:
