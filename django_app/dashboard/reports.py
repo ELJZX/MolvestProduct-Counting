@@ -122,7 +122,6 @@ def build_downtime_xlsx(meta, events):
 
     for col, w in zip('ABCDEFGH', [5, 42, 26, 40, 18, 18, 16, 14]):
         ws.column_dimensions[col].width = w
-    ws.freeze_panes = 'A6'
     _finalize_sheet(ws)
 
     if per_line:
@@ -245,7 +244,6 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
         merge_row(ws.max_row, ncols)
 
     # 6) Шапка таблицы — жирная по центру, без заливки, с окантовкой
-    header_row = ws.max_row
     if columns:
         two_row = (len(columns) >= 2
                    and str(columns[0]).startswith('Код')
@@ -259,14 +257,12 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
             ws.append(['Код:', ''] + list(columns[2:]))
             ws.merge_cells(start_row=r1, start_column=1,
                            end_row=r1, end_column=2)
-            header_row = r1
             for cell in ws[r1]:
                 cell.font = header_font
                 cell.border = border
                 cell.alignment = Alignment(horizontal='center', vertical='center')
             r2 = ws.max_row + 1
             ws.append(['Продукта', 'Заводской'] + [''] * max(0, len(columns) - 2))
-            header_row = r2
             for cell in ws[r2]:
                 cell.font = header_font
                 cell.border = border
@@ -276,14 +272,9 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
             for col in range(3, ncols + 1):
                 ws.merge_cells(start_row=r1, start_column=col,
                                end_row=r2, end_column=col)
-            for cell in ws[header_row]:
-                cell.font = header_font
-                cell.border = border
-                cell.alignment = Alignment(horizontal='center', vertical='center')
         else:
             ws.append(columns)
-            header_row = ws.max_row
-            for cell in ws[header_row]:
+            for cell in ws[ws.max_row]:
                 cell.font = header_font
                 cell.border = border
                 cell.alignment = Alignment(horizontal='center', vertical='center')
@@ -337,7 +328,6 @@ def _write_report_sheet(ws, meta, table, write_meta=True):
                 if cell.value is not None and len(str(cell.value)) > cw:
                     cell.alignment = Alignment(wrap_text=True, vertical='top')
 
-    ws.freeze_panes = f'A{header_row + 1}'
     _apply_table_page_setup(ws)
     _finalize_sheet(ws)
 
@@ -613,7 +603,6 @@ def export_reports_bundle_xlsx(items):
                 cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
                 merge_row(ws.max_row)
 
-        header_row = None
         for table in tables:
             if table.get('title_row'):
                 ws.append([table['title_row']])
@@ -648,21 +637,15 @@ def export_reports_bundle_xlsx(items):
                     ws.append(['Код:', ''] + list(columns[2:]))
                     ws.merge_cells(start_row=r1, start_column=1,
                                    end_row=r1, end_column=2)
-                    if header_row is None:
-                        header_row = r1
                     style_row(r1, font=header_font, center=True)
                     r2 = ws.max_row + 1
                     ws.append(['Продукта', 'Заводской'] + [''] * max(0, len(columns) - 2))
-                    if header_row is None:
-                        header_row = r2
                     style_row(r2, font=header_font, center=True)
                     for col in range(3, len(columns) + 1):
                         ws.merge_cells(start_row=r1, start_column=col,
                                        end_row=r2, end_column=col)
                 else:
                     ws.append(columns)
-                    if header_row is None:
-                        header_row = ws.max_row
                     style_row(ws.max_row, font=header_font, center=True)
             for row in table.get('rows') or []:
                 row_idx = ws.max_row + 1
@@ -698,8 +681,6 @@ def export_reports_bundle_xlsx(items):
                 caps[i] = max(caps.get(i, 0), min(30, max(8, int(ln * 1.2) + 2)))
         for col_idx, width in caps.items():
             ws.column_dimensions[get_column_letter(col_idx)].width = width
-        if header_row:
-            ws.freeze_panes = f'A{header_row + 1}'
         _apply_table_page_setup(ws)
         _finalize_sheet(ws)
 
