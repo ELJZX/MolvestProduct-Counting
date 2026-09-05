@@ -1,6 +1,6 @@
 # Молвест.Учет.Продукции — система учёта продукции
 
-> **Версия 2.0.6**
+> **Версия 3.0.1**
 
 Веб-приложение на **Python / Django** для подсчёта продукции, прошедшей под
 оптическими датчиками на производственных линиях молочного комбината.
@@ -172,7 +172,8 @@ MolvestProductСounting/
 │   └── dashboard/               # основное приложение
 │       ├── models.py            # Product, Shop, Line, ProductAssignment,
 │       │                        # ProductionRecord, ControllerReading,
-│       │                        # Counter, UserProfile, SystemConfig
+│       │                        # Counter, DbfCounterLine, UserProfile,
+│       │                        # SystemConfig, ReportLog
 │       ├── services.py          # бизнес-логика: приём показаний, смена
 │       │                        # продукта, минутные ряды, простои
 │       ├── api.py               # REST API + SSE-события
@@ -193,13 +194,19 @@ MolvestProductСounting/
 │   ├── server.py
 │   ├── run.bat
 │   └── static/                  # index.html, app.css, app.js
+├── docker/                      # Docker: Dockerfile-ы, nginx.conf, entrypoint.sh
+├── docker-compose.yml           # развёртывание: app + simulator + nginx + postgres (порт 8030)
+├── .dockerignore
 ├── logo.svg                     # логотип шапки (вшит в проект)
 ├── *.dbf                        # архивные данные контроллеров (2023–2026)
 ├── .env                         # конфигурация (БД, ключи, таймзона)
 ├── README.md
-├── RUNME.md                     # пошаговый запуск (Windows/PowerShell)
-└── requirements.txt             # (рабочий файл — в django_app/)
+└── RUNME.md                     # пошаговый запуск (Windows/PowerShell)
 ```
+
+> В папке `backups/` (в гите — только README) хранятся резервные копии
+> Docker-образов стека (`docker save`), которые можно воссоздать скриптом
+> `backup.ps1` / `backup.sh`.
 
 ---
 
@@ -332,6 +339,13 @@ python manage.py runserver 127.0.0.1:8000
   системы» → «Папка с файлами DBF»): укажите абсолютный путь (например
   `C:\dbf`) или относительный от корня проекта; рядом показана фактическая
   папка, которая будет использоваться.
+- **Привязка счётчика к линии**: в режиме DBF в шапке отчёта вместо
+  «Линия: 2044» можно показывать название линии. Для этого в админке Django
+  («Привязки счётчиков DBF к линиям») укажите код счётчика из имени файла
+  (например `2044` из `20442026.dbf`) и выберите соответствующую линию.
+  После этого в списке счётчиков вкладки «Отчёты» и в шапке отчёта будет
+  выводиться название линии; если привязка не задана — по-прежнему код
+  счётчика.
 - В режиме DBF вкладка «Отчёты» работает по файлам: в списке «Счётчик»
   показываются **коды счётчиков**, найденные в именах файлов (например,
   `20442023.dbf` → код `2044`), а рядом — диапазон данных и **дата/время
@@ -416,3 +430,63 @@ python manage.py simulate_controller --http --switch-after 10
 - соберите статику: `python manage.py collectstatic`;
 - запуск: gunicorn (`gunicorn django_app.wsgi:application`) или uWSGI,
   веб-сервер (nginx) проксирует на приложение и раздаёт `staticfiles/`.
+
+## Развёртывание в Docker
+
+В корне проекта лежит `docker-compose.yml` и папка `docker/`: Dockerfile-ы
+приложения и симулятора, конфигурация nginx и стартовый скрипт. Стек поднимается
+одной командой и полностью изолирован от локального окружения (PostgreSQL,
+виртуальное окружение, служба PostgreSQL Windows не нужны).
+
+```bash
+docker compose up -d --build
+```
+
+После запуска всё доступно через nginx на порту **8030**:
+
+| Адрес | Что это |
+|-------|---------|
+| http://localhost:8030 | основное приложение (отчёты, линии, продукция, статистика) |
+| http://localhost:8030/admin/ | админка Django |
+| http://localhost:8030/simulator/ | эмулятор линии |
+
+Используются образы PostgreSQL и nginx, образы приложения и симулятора
+собираются из `docker/app.Dockerfile` и `docker/simulator.Dockerfile`.
+Настройки передаются через переменные окружения (`docker-compose.yml`) — файл
+`.env` в контейнер не монтируется. При старте контейнер приложения сам ждёт
+БД, применяет миграции, наполняет демо-данные (`seed_data`) и собирает статику
+в общий volume, который раздаёт nginx. Архивные файлы DBF из папки `DBF VIKO`
+монтируются в контейнер только для чтения (запасной режим отчётов).
+
+Остановка и полная очистка (вместе с томами БД/статики):
+
+```bash
+docker compose down -v
+```
+
+> Примечание: если при сборке возникает ошибка buildkit вида
+> `failed to dial gRPC ... non-printable ASCII characters`, переключитесь на
+> классический сборщик: `$env:DOCKER_BUILDKIT='0'; docker compose build`.
+
+### Резервные копии Docker-образов
+
+Резервные копии образов стека (`docker save`) кладутся в папку `backups/`
+(она в `.gitignore` — большие бинарники не загружаются на GitHub):
+
+```powershell
+# PowerShell (Windows)
+.\backup.ps1
+```
+
+```bash
+# Linux / macOS
+./backup.sh
+```
+
+Файлы: `backups/molvest_django_<version>.tar`, `backups/molvest_simulator_<version>.tar`
+и т.д. Восстановление:
+
+```bash
+docker load --input backups/molvest_django_3.0.1.tar
+docker load --input backups/molvest_simulator_3.0.1.tar
+```

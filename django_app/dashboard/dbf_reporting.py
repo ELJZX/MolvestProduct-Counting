@@ -15,10 +15,24 @@ import datetime
 from django.utils import timezone
 
 from . import dbf_reader
-from .models import Product, ReportLog, SystemConfig
+from .models import DbfCounterLine, Product, ReportLog, SystemConfig
 from .reporting import SHIFT_BREAK_HOUR, _fmt_duration, _table, resolve_period
 
 MINUTE = datetime.timedelta(minutes=1)
+
+
+def resolve_line_name(code):
+    """Название линии, привязанной к коду счётчика DBF (админка Django).
+
+    Если привязка не настроена, возвращается сам код — в отчётах останется
+    прежнее поведение «Линия: <номер счётчика>».
+    """
+    code = str(code or '').strip()
+    if not code:
+        return None
+    mapping = (DbfCounterLine.objects
+               .filter(code=code).select_related('line').first())
+    return mapping.line.name if mapping else None
 
 REPORT_TYPES = {
     'shift': ['total', 'detail', 'downtime'],
@@ -529,7 +543,7 @@ def build_report(tab, rtype, counter_id, params):
 
         report_meta = [
             ('Счетчик:', code),
-            ('Линия:', code),
+            ('Линия:', resolve_line_name(code) or code),
             ('Смена:', f'Смена {shift_no}'),
             ('Период:', f'{timezone.localtime(from_dt):%d.%m.%Y %H:%M} – '
                         f'{timezone.localtime(to_dt):%d.%m.%Y %H:%M}'),
@@ -596,7 +610,7 @@ def build_report(tab, rtype, counter_id, params):
         )
         report_meta = [
             ('Счетчик:', code),
-            ('Линия:', code),
+            ('Линия:', resolve_line_name(code) or code),
             ('Период:', f'{timezone.localtime(from_dt):%d.%m.%Y %H:%M} – '
                         f'{timezone.localtime(to_dt):%d.%m.%Y %H:%M}'),
         ]
@@ -830,6 +844,7 @@ def build_report(tab, rtype, counter_id, params):
     if not tables and chart is None:
         return {'ok': False, 'error': 'Нет данных для формирования отчёта.'}
 
+    line_label = resolve_line_name(code) or f'Счётчик {code} (DBF)'
     return {
         'ok': True,
         'tables': tables,
@@ -837,8 +852,8 @@ def build_report(tab, rtype, counter_id, params):
         'error': None,
         'title': TYPE_LABELS.get(rtype, rtype),
         'period_label': label,
-        'counter': f'Счётчик {str(counter_id).strip()} (DBF)',
-        'line': f'Счётчик {str(counter_id).strip()} (DBF)',
+        'counter': f'Счётчик {code} (DBF)',
+        'line': line_label,
         'meta': report_meta,
         'report_id': report_id_out,
         'range': {

@@ -1,0 +1,22 @@
+# Docker build context — исключаем всё лишнее
+.git/
+.idea/
+venv/
+.tmp-pip/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+db.sqlite3
+media/
+django_app/staticfiles/
+.env
+.env.*
+README.md
+RUNME.md
+*.xlsx
+*.csv
+*.dbf
+"DBF VIKO/"
+docker-compose.yml
+.DS_Store

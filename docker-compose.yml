@@ -1,0 +1,91 @@
+# Развёртывание системы учёта продукции (Django + симулятор линии + nginx + PostgreSQL).
+# Единая точка входа — nginx на порту 8030:
+#   * http://localhost:8030            — основное приложение (отчёты, линии, продукция)
+#   * http://localhost:8030/admin/     — админка Django
+#   * http://localhost:8030/simulator/ — эмулятор линии
+#
+# Запуск:  docker compose up -d --build
+# Остановка: docker compose down
+services:
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: molvest
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d molvest"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  django:
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    environment:
+      DEBUG: "True"
+      SECRET_KEY: "django-insecure-dev-key-change-me"
+      ALLOWED_HOSTS: "*"
+      DB_ENGINE: "postgresql"
+      DB_NAME: "molvest"
+      DB_USER: "postgres"
+      DB_PASSWORD: "admin"
+      DB_HOST: "db"
+      DB_PORT: "5432"
+      CONTROLLER_API_KEY: "super-secret-controller-key"
+      APP_TIME_ZONE: "Europe/Moscow"
+      CSRF_TRUSTED_ORIGINS: "http://localhost:8030,http://127.0.0.1:8030"
+    volumes:
+      - static_volume:/app/django_app/staticfiles
+      - media_volume:/app/django_app/media
+      # Архивные файлы DBF (запасной режим отчётов) — только чтение
+      - "./DBF VIKO:/app/DBF VIKO:ro"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/health/"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+  simulator:
+    build:
+      context: .
+      dockerfile: docker/simulator.Dockerfile
+    environment:
+      DJANGO_BASE_URL: "http://django:8000"
+      CONTROLLER_API_KEY: "super-secret-controller-key"
+      BASE_PATH: "/simulator"
+      PORT: "8050"
+    depends_on:
+      django:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8030:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - static_volume:/srv/staticfiles:ro
+      - media_volume:/srv/media:ro
+    depends_on:
+      django:
+        condition: service_healthy
+      simulator:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  static_volume:
+  media_volume:

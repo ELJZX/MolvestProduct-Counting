@@ -15,7 +15,8 @@ from . import dbf_reader, dbf_reporting, reporting, services
 from .decorators import can_manage, role_required
 from .forms import ProductForm
 from .models import (
-    Counter, Line, Product, ProductAssignment, ProductionRecord, Shop, SystemConfig,
+    Counter, DbfCounterLine, Line, Product, ProductAssignment,
+    ProductionRecord, Shop, SystemConfig,
 )
 from .reports import (
     build_day_chart_xlsx, build_downtime_csv, build_downtime_xlsx,
@@ -221,11 +222,19 @@ def reports_page(request):
         # (например, 20442023.dbf -> код 2044). Файл за нужный период
         # подбирается автоматически при формировании отчёта.
         codes = dbf_reader.list_counter_codes(cfg.resolved_dbf_dir())
+        # Привязки «код счётчика -> название линии» (одним запросом)
+        line_names = {
+            m.code: m.line.name
+            for m in DbfCounterLine.objects.select_related('line').filter(code__in=list(codes))
+        }
         latest_last = None  # самая поздняя дата данных среди всех файлов
         for code, info in sorted(codes.items()):
             if info['last'] and (latest_last is None or info['last'] > latest_last):
                 latest_last = info['last']
             label = f'Счётчик {code}'
+            line_name = line_names.get(code)
+            if line_name:
+                label += f' · {line_name}'
             if info['first'] and info['last']:
                 label += (f' · {info["first"].strftime("%d.%m.%Y")} – '
                           f'{info["last"].strftime("%d.%m.%Y")}')

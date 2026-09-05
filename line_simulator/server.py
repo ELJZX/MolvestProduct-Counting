@@ -27,6 +27,20 @@ STATIC_DIR = BASE_DIR / 'static'
 DJANGO_BASE_URL = os.environ.get('DJANGO_BASE_URL', 'http://127.0.0.1:8000/').rstrip('/')
 CONTROLLER_API_KEY = os.environ.get('CONTROLLER_API_KEY', 'super-secret-controller-key')
 DEFAULT_PORT = int(os.environ.get('PORT', '8050'))
+# Базовый путь, под которым сервис публикуется (например /simulator в Docker).
+# Пусто — сервис работает в корне (локальный запуск по умолчанию).
+BASE_PATH = os.environ.get('BASE_PATH', '').rstrip('/')
+
+
+def _strip_base(path):
+    """Убирает базовый путь (BASE_PATH) из запрошенного пути.
+
+    Пример: BASE_PATH='/simulator', path='/simulator/api/config' -> '/api/config';
+    path='/simulator' -> '/'. Если базовый путь не задан или путь вне его — без изменений.
+    """
+    if BASE_PATH and (path == BASE_PATH or path.startswith(BASE_PATH + '/')):
+        return path[len(BASE_PATH):] or '/'
+    return path
 
 MIME = {
     '.html': 'text/html; charset=utf-8',
@@ -63,7 +77,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------------
     def do_GET(self):
-        path = self.path.split('?', 1)[0]
+        path = _strip_base(self.path.split('?', 1)[0])
         if path in ('/', '/index.html'):
             self._serve_file('index.html')
         elif path.startswith('/static/'):
@@ -84,7 +98,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b'{"ok": false, "error": "not found"}')
 
     def do_POST(self):
-        path = self.path.split('?', 1)[0]
+        path = _strip_base(self.path.split('?', 1)[0])
         if path == '/api/count':
             length = int(self.headers.get('Content-Length') or 0)
             raw = self.rfile.read(length) if length else b'{}'
@@ -115,6 +129,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b'{"ok": false, "error": "not found"}')
             return
         content = target.read_bytes()
+        # index.html использует относительные пути (static/..., api/...) —
+        # чтобы они корректно работали под базовым путём (/*simulator*), вшиваем <base>.
+        if name == 'index.html':
+            text = content.decode('utf-8')
+            text = text.replace('<head>', '<head>\n<base href="%s/">' % BASE_PATH, 1)
+            content = text.encode('utf-8')
         ctype = MIME.get(target.suffix.lower(), 'application/octet-stream')
         self._send(200, content, ctype)
 

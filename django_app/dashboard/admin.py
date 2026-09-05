@@ -3,8 +3,9 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
 
 from .models import (
-    ControllerReading, Counter, Line, Product, ProductAssignment,
-    ProductionRecord, ReportLog, Shop, SystemConfig, UserProfile,
+    ControllerReading, Counter, DbfCounterLine, Line, Product,
+    ProductAssignment, ProductionRecord, ReportLog, Shop, SystemConfig,
+    UserProfile,
 )
 
 
@@ -40,6 +41,19 @@ class CounterAdmin(admin.ModelAdmin):
     list_display = ('name', 'line', 'created_at')
     search_fields = ('name', 'line__name')
     autocomplete_fields = ('line',)
+
+
+@admin.register(DbfCounterLine)
+class DbfCounterLineAdmin(admin.ModelAdmin):
+    list_display = ('code', 'line', 'shop_name')
+    list_display_links = ('code', 'line')
+    list_filter = ('line__shop',)
+    search_fields = ('code', 'line__name', 'line__shop__name')
+    autocomplete_fields = ('line',)
+
+    @admin.display(description='Цех', ordering='line__shop')
+    def shop_name(self, obj):
+        return obj.line.shop.name
 
 
 @admin.register(ProductAssignment)

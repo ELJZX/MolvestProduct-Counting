@@ -23,6 +23,12 @@ SECRET_KEY = env('SECRET_KEY', default='django-insecure-dev-key-change-me')
 DEBUG = env('DEBUG', default=True, cast=bool)
 ALLOWED_HOSTS = [h.strip() for h in env('ALLOWED_HOSTS', default='*').split(',') if h.strip()]
 
+# Доверенные источники для CSRF (Origin) — через запятую. Нужно при доступе
+# за реверс-прокси/по адресу с портом, отличным от Host (например http://localhost:8030).
+CSRF_TRUSTED_ORIGINS = [
+    o.strip() for o in env('CSRF_TRUSTED_ORIGINS', default='').split(',') if o.strip()
+]
+
 # Ключ авторизации контроллеров ОВЕН
 CONTROLLER_API_KEY = env('CONTROLLER_API_KEY', default='super-secret-controller-key')
 
@@ -124,7 +130,7 @@ MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 # Версия сборки (видна в шапке — по ней легко понять, какая версия запущена)
-APP_VERSION = '2.0.6'
+APP_VERSION = '3.0.1'
 
 # ---- DRF ----
 REST_FRAMEWORK = {

@@ -271,6 +271,35 @@ class Counter(models.Model):
         return f'{self.name} ({self.line.name})'
 
 
+class DbfCounterLine(models.Model):
+    """Привязка кода счётчика из файлов DBF к линии.
+
+    В запасном режиме отчётов (SystemConfig.data_source='dbf') «счётчиком»
+    служит код из имени файла DBF (например, 20442023.dbf -> код 2044).
+    Эта модель сопоставляет такой код с линией, чтобы в отчётах вместо
+    номера счётчика показывалось название линии (админка Django).
+    """
+
+    code = models.CharField(
+        'Код счётчика (DBF)', max_length=20, unique=True,
+        help_text='Код счётчика из имени файла DBF (например 2044 из 20442023.dbf).',
+    )
+    line = models.ForeignKey(
+        Line, on_delete=models.CASCADE, related_name='dbf_counters',
+        verbose_name='Линия',
+        help_text='Линия, к которой относится этот код счётчика (её название '
+                  'будет подставляться в отчёты).',
+    )
+
+    class Meta:
+        ordering = ['code']
+        verbose_name = 'Привязка счётчика DBF к линии'
+        verbose_name_plural = 'Привязки счётчиков DBF к линиям'
+
+    def __str__(self):
+        return f'{self.code} → {self.line.name}'
+
+
 class UserProfile(models.Model):
     """Профиль пользователя с уровнем доступа."""
 

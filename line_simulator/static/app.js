@@ -66,10 +66,10 @@
   async function checkConnection(showDetail) {
     setConn('unknown', 'проверка…', 'Запрос к серверу Django…');
     try {
-      const cfg = await apiGet('/api/config');
+      const cfg = await apiGet('api/config');
       djangoUrl = cfg.django_url || '';
       djangoUrlEl.textContent = djangoUrl || '—';
-      const health = await apiGet('/api/health');
+      const health = await apiGet('api/health');
       const detail = 'Сервер доступен: ' + djangoUrl + ' · линий в системе: ' + (health.lines != null ? health.lines : '?') +
         ' · время сервера: ' + (health.time ? String(health.time).replace('T', ' ').slice(0, 19) : '');
       setConn('ok', 'подключено', detail);
@@ -179,7 +179,7 @@
 
   async function loadLines() {
     try {
-      const data = await apiGet('/api/lines');
+      const data = await apiGet('api/lines');
       lines = data.lines || [];
       // новые линии по умолчанию выбраны
       lines.forEach((l) => { if (!(l.id in selected)) selected[l.id] = true; });
@@ -219,7 +219,7 @@
 
   async function loadProducts() {
     try {
-      const data = await apiGet('/api/products');
+      const data = await apiGet('api/products');
       products = data.products || [];
       renderProductFilter();
     } catch (e) {
@@ -256,7 +256,7 @@
     const btn = card.querySelector('.count-btn');
     if (btn) btn.disabled = true;
     try {
-      const resp = await fetch('/api/count', {
+      const resp = await fetch('api/count', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ controller_id: controllerId, product: product, delta: delta }),
@@ -350,7 +350,7 @@
       }
       pinOk.disabled = true;
       try {
-        const resp = await fetch('/api/switch', {
+        const resp = await fetch('api/switch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -391,7 +391,7 @@
       const product = productSelect.value;
       confirmOk.disabled = true;
       try {
-        const resp = await fetch('/api/switch', {
+        const resp = await fetch('api/switch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -446,7 +446,7 @@
   // старт: проверка подключения + автопроверка раз в 30 секунд
   checkConnection(false);
   setInterval(() => {
-    fetch('/api/health').then((r) => {
+    fetch('api/health').then((r) => {
       if (r.ok) {
         if (connStatus.className.indexOf('conn-err') !== -1) checkConnection(false);
       } else {
